@@ -1,0 +1,12 @@
+{
+  "rewrites": [
+    {
+      "source": "/anime/:path*",
+      "destination": "https://www.sankavollerei.com/anime/:path*"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ]
+}
