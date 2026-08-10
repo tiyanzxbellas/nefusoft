@@ -92,7 +92,7 @@ const Ongoing = () => {
 
         <div className="grid grid-cols-[repeat(auto-fill,minmax(95px,1fr))] gap-3 px-2 mb-10">
           {isLoading ? [...Array(18)].map((_, i) => <CardSkeleton key={`shimmer-${i}`} />) : results.map((a, index) => (
-            <AnimeCard key={a.id} a={a} index={index} onClick={() => navigate(`/anime/${a.id}-${(a.title||'').toLowerCase().replace(/[^a-z0-9]+/g, '-')}`, { state: { anime: a } })} />
+            <AnimeCard key={a.id} a={a} index={index} onClick={() => navigate(`/anime/${a.id}`, { state: { anime: a } })} />
           ))}
         </div>
       </div>

@@ -187,7 +187,7 @@ const History = () => {
                     />
                     <div>
                       <h3
-                        onClick={() => navigate(`/anime/${group.anime_id}-${group.anime_slug}/${group.episodes[0]?.episode_index || 1}`)}
+                        onClick={() => navigate(`/anime/${group.anime_id}/${group.episodes[0]?.episode_index || 1}`)}
                         className="text-white font-extrabold text-sm md:text-base line-clamp-1 hover:text-[#F6CF80] cursor-pointer transition-colors"
                       >
                         {group.anime_title}
@@ -218,7 +218,7 @@ const History = () => {
                     return (
                       <div
                         key={ep.episode_index}
-                        onClick={() => navigate(`/anime/${ep.anime_id}-${ep.anime_slug}/${ep.episode_index}`)}
+                        onClick={() => navigate(`/anime/${ep.anime_id}/${ep.episode_index}`)}
                         className="flex-shrink-0 w-[180px] md:w-[220px] group/ep relative cursor-pointer rounded-xl bg-black/40 border border-white/5 overflow-hidden p-2 hover:border-[#F6CF80]/40 transition-all hover:bg-black/60"
                       >
                         <div className="relative aspect-video w-full rounded-lg overflow-hidden mb-2 bg-black">

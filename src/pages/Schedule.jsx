@@ -186,7 +186,7 @@ const Schedule = () => {
                 key={`${a.id}-${index}`} 
                 a={a} 
                 index={index}
-                onClick={() => navigate(`/anime/${a.id}-${(a.title||'').toLowerCase().replace(/[^a-z0-9]+/g, '-')}`, { state: { anime: a, latestEp: true } })}
+                onClick={() => navigate(`/anime/${a.id}`, { state: { anime: a, latestEp: true } })}
               />
             )) : (
               <div className="py-20 flex flex-col items-center justify-center text-center">
