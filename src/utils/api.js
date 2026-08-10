@@ -13,6 +13,17 @@
  * sudah dinormalisasi ke shape lama (image_poster, image_cover,
  * episodes[], stream_links[], dll) supaya UI tidak perlu diubah.
  *
+ * CORS PROXY
+ * ----------------------------------------------------------------
+ * Server API Sanka Vollerei TIDAK mengirim header CORS, jadi request
+ * langsung dari browser (fetch ke origin lain) selalu diblokir.
+ * Semua request di file ini dirutekan lewat CORS proxy chain:
+ *   1. Worker Cloudflare milik project (sama seperti halaman Donghua)
+ *   2. Fallback public proxies (corsproxy.io, allorigins, codetabs)
+ *   3. Direct fetch (fallback terakhir)
+ * Proxy utama bisa dioverride via env `VITE_CORS_PROXY`
+ * (set ke "direct" untuk menonaktifkan proxy sepenuhnya).
+ *
  * Shape response API baru (contoh untuk /anime/ongoing-anime):
  *   { status, creator, data: { animeList: [
  *       { title, poster, animeId, releaseDay, latestReleaseDate, ... }
@@ -44,12 +55,69 @@ const MP4_PROXY_BASE = 'https://cf.elainaa.workers.dev/';
 export const getImgProxy = (url) => (url ? `${IMG_PROXY}${encodeURIComponent(url)}` : '');
 export const getMp4Proxy = (url) => (url ? `${MP4_PROXY_BASE}${url}` : '');
 
-// Helper low-level fetch dengan error handling yang konsisten
+// =====================
+// CORS Proxy chain
+// =====================
+// API anime tidak punya header CORS → browser menolak response-nya.
+// Karena itu semua request API dirutekan lewat sederetan proxy.
+// Proxy #1 adalah Cloudflare Worker milik project (worker yang sama juga
+// dipakai halaman Donghua/Manga). Sisanya public fallback kalau worker down.
+// Override proxy utama lewat env VITE_CORS_PROXY (isi "direct" untuk bypass).
+const CORS_PROXY_ENV = import.meta.env.VITE_CORS_PROXY;
+const CORS_PROXIES =
+  CORS_PROXY_ENV === 'direct'
+    ? []
+    : [
+        CORS_PROXY_ENV || 'https://cf.tiyanstores.workers.dev/?url=',
+        'https://corsproxy.io/?url=',
+        'https://api.allorigins.win/raw?url=',
+        'https://api.codetabs.com/v1/proxy?quest=',
+      ];
+
+// URL API lewat CORS proxy utama (dipakai juga kalau modul lain butuh manual)
+export const getApiUrl = (url) =>
+  CORS_PROXIES.length ? `${CORS_PROXIES[0]}${encodeURIComponent(url)}` : url;
+
+// fetch dengan timeout supaya proxy yang hang cepat diloncati
+const fetchWithTimeout = async (url, { signal, timeoutMs = 15000 } = {}) => {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(new DOMException('Timeout', 'TimeoutError')), timeoutMs);
+  const onAbort = () => ctrl.abort(signal.reason);
+  if (signal) {
+    if (signal.aborted) {
+      clearTimeout(timer);
+      throw signal.reason ?? new DOMException('Aborted', 'AbortError');
+    }
+    signal.addEventListener('abort', onAbort, { once: true });
+  }
+  try {
+    return await fetch(url, { signal: ctrl.signal });
+  } finally {
+    clearTimeout(timer);
+    if (signal) signal.removeEventListener('abort', onAbort);
+  }
+};
+
+// Helper low-level fetch dengan error handling yang konsisten.
+// Coba tiap CORS proxy secara berurutan; kalau semua gagal baru coba direct.
 const request = async (path, { signal } = {}) => {
-  const url = path.startsWith('http') ? path : `${API_BASE}${path}`;
-  const res = await fetch(url, { signal });
-  if (!res.ok) throw new Error(`API ${res.status} ${res.statusText} (${url})`);
-  return res.json();
+  const target = path.startsWith('http') ? path : `${API_BASE}${path}`;
+  const urls = [...CORS_PROXIES.map((p) => `${p}${encodeURIComponent(target)}`), target];
+
+  let lastErr = null;
+  for (const url of urls) {
+    if (signal?.aborted) throw signal.reason ?? new DOMException('Aborted', 'AbortError');
+    try {
+      const res = await fetchWithTimeout(url, { signal });
+      if (!res.ok) throw new Error(`API ${res.status} ${res.statusText} (${url})`);
+      return await res.json();
+    } catch (err) {
+      // Abort oleh caller (unmount/route change) → jangan retry, langsung lempar
+      if (signal?.aborted) throw err;
+      lastErr = err;
+    }
+  }
+  throw lastErr ?? new Error(`Gagal fetch ${target}`);
 };
 
 // =====================
@@ -359,5 +427,6 @@ export default {
   apiFetch,
   getImgProxy,
   getMp4Proxy,
+  getApiUrl,
   buildAnimeSlug,
 };

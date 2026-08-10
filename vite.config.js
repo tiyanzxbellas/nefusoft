@@ -5,6 +5,8 @@ import tailwindcss from '@tailwindcss/vite'
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   server: {
+    host: true, // bind 0.0.0.0 supaya bisa diakses dari luar sandbox/preview
+    allowedHosts: true, // izinkan hostname preview dinamis
     proxy: {
       '/anime': {
         target: 'https://www.sankavollerei.web.id',
