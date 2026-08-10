@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
+import { fetchSchedule, fetchOngoing, fetchPopular, apiFetch } from '../utils/api';
 
 const Shimmer = () => (
   <div className="absolute top-0 bottom-0 left-0 w-[150%] animate-[shimmer_1.5s_infinite] bg-gradient-to-r from-transparent via-white/5 to-transparent z-10" style={{ transform: 'translate3d(-100%, 0, 0) skewX(-20deg)' }} />
@@ -78,24 +79,21 @@ const Home = () => {
     }, 1500);
 
     if (window.__NEFUSOFT_CACHE__) return () => clearTimeout(timer);
-    
+
     let isMounted = true;
     const fetchData = async () => {
       if (!localCache) {
         setIsLoading(true);
       }
       try {
-        const [schRes, ongRes, popRes] = await Promise.all([
-          fetch('/api/schedule').then(r => r.json()),
-          fetch('/anime/stream/latest').then(r => r.json()),
-          fetch('/anime/stream/popular').then(r => r.json())
+        // Pakai helper adapter (auto-normalisasi ke shape lama)
+        const [schData, ongData, popData] = await Promise.all([
+          fetchSchedule(),
+          fetchOngoing(1),
+          fetchPopular(1),
         ]);
         if (!isMounted) return;
-        
-        const schData = schRes.data || {};
-        const ongData = ongRes.data || [];
-        const popData = popRes.data || [];
-        
+
         const shuffledOngoing = shuffleArray(ongData);
 
         setSchedule(schData);
@@ -104,6 +102,7 @@ const Home = () => {
         window.__NEFUSOFT_CACHE__ = { schedule: schData, ongoing: shuffledOngoing, popular: popData };
         setCachedData('nefusoft_home_cache', { schedule: schData, ongoing: shuffledOngoing, popular: popData });
       } catch (e) {
+        console.error('Home fetch failed', e);
       } finally {
         if (isMounted) setIsLoading(false);
       }
@@ -116,7 +115,8 @@ const Home = () => {
   }, []);
 
   const days = ["MINGGU", "SENIN", "SELASA", "RABU", "KAMIS", "JUMAT", "SABTU"];
-  const todayAnime = (schedule[days[new Date().getDay()]] || []).filter(a => a.status === "ONGOING");
+  // Schedule API baru = semua anime ongoing (per hari). Tinggal ambil by day.
+  const todayAnime = schedule[days[new Date().getDay()]] || [];
   const carouselItems = todayAnime.length > 0 ? [...todayAnime, todayAnime[0]] : [];
 
   useEffect(() => {

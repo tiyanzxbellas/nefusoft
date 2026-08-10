@@ -7,12 +7,14 @@ export default defineConfig({
   server: {
     proxy: {
       '/anime': {
-        target: 'https://www.sankavollerei.com',
+        target: 'https://www.sankavollerei.web.id',
         changeOrigin: true,
+        secure: true,
       },
       '/api': {
-        target: 'https://www.sankavollerei.com',
+        target: 'https://www.sankavollerei.web.id',
         changeOrigin: true,
+        secure: true,
       }
     }
   },

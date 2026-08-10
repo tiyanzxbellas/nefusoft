@@ -2,14 +2,52 @@ import '../style.css'
 
 const API_BASE = import.meta.env.VITE_API_BASE;
 
+// Adapter: API baru return { data: { animeList: [...] } } untuk ongoing,
+// sedangkan API lama return { data: [...] } langsung.
+// Fungsi ini normalisasi ke shape lama (array of anime dengan image_poster)
+const normalizeOngoing = (raw) => {
+  const d = raw?.data;
+  if (Array.isArray(d)) return d; // shape lama
+  if (Array.isArray(d?.animeList)) return d.animeList.map(a => ({
+    ...a,
+    image_poster: a.poster,
+    image_cover: a.poster,
+  }));
+  return [];
+};
+
+const normalizeSchedule = (raw) => {
+  // API baru return { data: [{ day, anime_list: [...] }] }
+  // API lama return { data: { MINGGU: [...], SENIN: [...] } }
+  const d = raw?.data;
+  if (!d) return {};
+  if (Array.isArray(d)) {
+    const out = {};
+    d.forEach(entry => {
+      const key = (entry.day || '').toString().toUpperCase();
+      out[key] = (entry.anime_list || []).map(a => ({
+        ...a,
+        image_poster: a.poster,
+        image_cover: a.poster,
+      }));
+    });
+    return out;
+  }
+  return d;
+};
+
 async function initHome() {
-  const scheduleData = await fetch(`${API_BASE}/schedule`).then(res => res.json());
-  const ongoingData = await fetch(`${API_BASE}/ongoing`).then(res => res.json());
-  
-  renderHero(scheduleData.data);
-  renderOngoing(ongoingData.data.slice(0, 10));
-  setupSearch();
-  setupShare();
+  try {
+    const scheduleData = await fetch(`${API_BASE}/schedule`).then(res => res.json());
+    const ongoingData = await fetch(`${API_BASE}/ongoing-anime`).then(res => res.json());
+
+    renderHero(normalizeSchedule(scheduleData));
+    renderOngoing(normalizeOngoing(ongoingData).slice(0, 10));
+    setupSearch();
+    setupShare();
+  } catch (e) {
+    console.error('initHome failed', e);
+  }
 }
 
 function renderHero(data) {

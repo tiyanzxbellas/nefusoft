@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Navbar from '../components/Navbar';
+import { fetchOngoing } from '../utils/api';
 
 const Shimmer = () => <div className="absolute top-0 bottom-0 left-0 w-[150%] animate-[shimmer_1.5s_infinite] bg-gradient-to-r from-transparent via-white/5 to-transparent z-10" style={{ transform: 'translate3d(-100%, 0, 0) skewX(-20deg)' }} />;
 
@@ -55,16 +56,17 @@ const Ongoing = () => {
     const fetchPage = async () => {
       setIsLoading(true);
       try {
-        const res = await fetch(`/anime/stream/latest`).then(r => r.json());
+        // Pakai adapter langsung — auto-normalisasi ke shape lama
+        const fetchedData = await fetchOngoing(1);
         if (isMounted) {
-          const fetchedData = res.data || [];
-          setResults(fetchedData);
+          setResults(fetchedData || []);
           if (!window.__NEFUSOFT_CACHE__) {
             window.__NEFUSOFT_CACHE__ = {};
           }
           window.__NEFUSOFT_CACHE__.ongoing = fetchedData;
         }
       } catch (e) {
+        console.error('Ongoing fetch failed', e);
         if (isMounted) setResults([]);
       } finally {
         if (isMounted) setIsLoading(false);

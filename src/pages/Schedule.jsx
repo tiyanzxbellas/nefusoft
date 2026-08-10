@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Navbar from '../components/Navbar';
+import { fetchSchedule, fetchAnime } from '../utils/api';
 
 const Shimmer = () => <div className="absolute top-0 bottom-0 left-0 w-[150%] animate-[shimmer_1.5s_infinite] bg-gradient-to-r from-transparent via-white/5 to-transparent z-10" style={{ transform: 'translate3d(-100%, 0, 0) skewX(-20deg)' }} />;
 
@@ -46,13 +47,16 @@ const ScheduleCard = ({ a, onClick, index }) => {
 
   useEffect(() => {
     let mounted = true;
-    fetch(`/anime/stream/anime/${a.id}`)
-      .then(res => res.json())
-      .then(d => {
-        if (mounted && d.data?.episode_list?.[0]) {
-          setEp(d.data.episode_list[0].index);
+    // Pakai adapter API baru
+    fetchAnime(a.id)
+      .then((d) => {
+        if (!mounted || !d) return;
+        const firstEp = (d.episode_list || d.episodes ||[])[0];
+        if (firstEp) {
+          setEp(firstEp.eps || firstEp.index || (firstEp.eps_title || '').match(/(\d+)$/)?.[1] || null);
         }
-      }).catch(() => null);
+      })
+      .catch(() => null);
     return () => { mounted = false; };
   },[a.id]);
 
@@ -127,24 +131,25 @@ const Schedule = () => {
     if (window.__NEFUSOFT_CACHE__?.schedule) return;
 
     let isMounted = true;
-    const fetchSchedule = async () => {
+    const runFetch = async () => {
       setIsLoading(true);
       try {
-        const res = await fetch('/api/schedule').then(r => r.json());
+        // Pakai adapter langsung — auto-normalisasi
+        const fetchedSchedule = await fetchSchedule();
         if (isMounted) {
-          const fetchedSchedule = res.data || {};
-          setSchedule(fetchedSchedule);
+          setSchedule(fetchedSchedule || {});
           if (!window.__NEFUSOFT_CACHE__) {
             window.__NEFUSOFT_CACHE__ = {};
           }
           window.__NEFUSOFT_CACHE__.schedule = fetchedSchedule;
         }
       } catch (e) {
+        console.error('Schedule fetch failed', e);
       } finally {
         if (isMounted) setIsLoading(false);
       }
     };
-    fetchSchedule();
+    runFetch();
     return () => { isMounted = false; };
   },[]);
 
