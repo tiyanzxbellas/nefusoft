@@ -66,8 +66,11 @@ Ikuti langkah-langkah berikut untuk menjalankan NefuSoft di perangkat Anda:
    Lalu isi file `.env` dengan *endpoint API*:
    ```env
    VITE_API_BASE=https://www.sankavollerei.web.id/anime
+   VITE_CORS_PROXY=https://cf.tiyanstores.workers.dev/?url=
    ```
    > ℹ️ **Update API 2026:** NefuSoft sekarang menggunakan endpoint Sanka Vollerei terbaru (domain `.web.id` dengan struktur path baru). Adapter layer di `src/utils/api.js` sudah menerjemahkan otomatis dari path lama ke endpoint baru, jadi tidak ada perubahan kode yang dibutuhkan di sisi komponen.
+   >
+   > 🛡️ **CORS Proxy:** Server API anime tidak mengirim header CORS, sehingga seluruh request API di browser dirutekan lewat *CORS proxy* (`VITE_CORS_PROXY` sebagai proxy utama, lalu fallback otomatis ke `corsproxy.io`, `allorigins`, dan `codetabs` jika proxy utama gagal). Ganti `VITE_CORS_PROXY` dengan proxy Anda sendiri, atau isi `direct` untuk menonaktifkan proxy sepenuhnya (hanya untuk lingkungan non-browser/server-side).
 
 4. **Jalankan Development Server**
    ```bash

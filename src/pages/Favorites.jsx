@@ -76,7 +76,7 @@ const Favorites = () => {
             {favoritesList.map((anime) => (
               <div
                 key={anime.anime_id}
-                onClick={() => navigate(`/anime/${anime.anime_id}-${anime.anime_slug}`, {
+                onClick={() => navigate(`/anime/${anime.anime_id || anime.anime_slug}`, {
                   state: {
                     anime: {
                       id: anime.anime_id,

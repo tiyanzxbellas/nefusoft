@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
@@ -49,10 +49,19 @@ const WatchSkeleton = () => (
   </div>
 );
 
+// Slug episode API Sanka baru diakhiri suffix, contoh:
+//   "hykno-s3-episode-6-sub-indo" → episode 6 dari anime "hyakkano-s3-sub-ind"
+// Format lama: "...-episode-6". Regex ini menangkap keduanya.
+// CATATAN: prefix episode-slug TIDAK SELALU sama dengan anime-slug,
+// jadi animeId asli di-resolve dari response endpoint episode (field animeId).
+const EP_SLUG_RE = /^(.*)-episode-(\d+)(?:-[a-z0-9-]*)?$/i;
+
 const Watch = () => {
-  const { slug } = useParams();
-  const animeSlug = slug ? slug.replace(/-episode-\d+$/, '') : null;
+  const { slug, episode: episodeParam } = useParams(); // episodeParam = nomor (link History: /anime/:id/:no)
+  const [animeSlug, setAnimeSlug] = useState(null); // animeId hasil resolve
   const navigate = useNavigate();
+  // Cache anime detail per animeId — ganti episode tidak perlu fetch ulang detail
+  const animeCacheRef = useRef(new Map());
 
   const [anime, setAnime] = useState(null);
   const [episodes, setEpisodes] = useState([]);
@@ -70,7 +79,7 @@ const Watch = () => {
   const [isFavorited, setIsFavorited] = useState(false);
 
   const currentEpNum = episodes.find(e => e.id === currentEpId)?.index
-    || currentEpId?.match(/-episode-(\d+)$/)?.[1]
+    || currentEpId?.match(/-episode-(\d+)(?:-[a-z0-9-]*)?$/i)?.[1]
     || '?';
 
   const updateMetaTags = (title, desc, image) => {
@@ -147,35 +156,63 @@ const Watch = () => {
     };
   };
 
-  // Main fetch
+  // Main fetch — reaktif terhadap perubahan slug URL (termasuk ganti episode).
+  //
+  // Alur:
+  //   A) URL episode ("…-episode-6-sub-indo")
+  //      → fetchEpisode(slug) DULU untuk resolve animeId asli (field animeId),
+  //      → fetchAnime(animeId) untuk detail + daftar episode.
+  //   B) URL anime murni ("hyakkano-s3-sub-ind")
+  //      → fetchAnime(slug), lalu redirect ke episode 1 — effect ini re-run
+  //        dengan slug episode (alur A). Detail anime di-cache supaya tidak
+  //        di-fetch ulang setiap ganti episode.
   useEffect(() => {
-    if (!animeSlug) return;
+    if (!slug) return;
     window.scrollTo(0, 0);
 
-    const isEpisodeSlug = slug && /-episode-\d+$/.test(slug);
-
-    // Buat query Jikan dari slug (ganti - jadi spasi)
-    const jikanQuery = encodeURIComponent(animeSlug.replace(/-/g, ' '));
+    let cancelled = false;
 
     const load = async () => {
-      setIsLoading(true);
+      const epMatch = slug.match(EP_SLUG_RE);
+      const isEpisodeSlug = !!epMatch;
+
       setServers([]);
       setSelectedServer(null);
+      // Ganti episode saat sudah nonton → loader kecil di player;
+      // sisanya (kunjungan baru / ganti judul) → skeleton penuh.
+      if (isEpisodeSlug && anime) setIsEpLoading(true);
+      else setIsLoading(true);
+
       try {
-        // ✅ Semua fetch jalan parallel, Jikan ga nambah loading time
-        // Pakai adapter API baru — output sudah di-normalisasi ke shape lama
-        const [animeData, popularData, epDataRaw, jikanRes] = await Promise.all([
-          fetchAnime(animeSlug).catch(() => null),
+        // 1) Resolve animeId (via response episode kalau URL adalah episode)
+        let epDataRaw = null;
+        let animeId = slug;
+        if (isEpisodeSlug) {
+          epDataRaw = await fetchEpisode(slug).catch(() => null);
+          animeId = epDataRaw?.animeId || epMatch[1] || slug;
+        }
+        if (cancelled) return;
+        setAnimeSlug(animeId);
+
+        // Buat query Jikan dari animeId (strip suffix bahasa, ganti - jadi spasi)
+        const jikanQuery = encodeURIComponent(
+          animeId.replace(/-sub-?indo?$/i, '').replace(/-/g, ' ')
+        );
+
+        // 2) Detail anime (cache) + rekomendasi + Jikan berjalan parallel
+        const cached = animeCacheRef.current.get(animeId) || null;
+        const [animeData, popularData, jikanRes] = await Promise.all([
+          cached ? Promise.resolve(cached) : fetchAnime(animeId).catch(() => null),
           fetchPopular(1).catch(() => []),
-          isEpisodeSlug
-            ? fetchEpisode(slug).catch(() => null)
-            : Promise.resolve(null),
           fetch(`https://api.jikan.moe/v4/anime?q=${jikanQuery}&limit=5`)
             .then(r => r.json()).catch(() => ({ data: [] })),
         ]);
+        if (cancelled) return;
 
         const data = animeData; // adapter sudah return object langsung, bukan { data }
         if (data) {
+          animeCacheRef.current.set(animeId, data);
+
           // ✅ Ambil data Jikan untuk field yang kosong
           const jikan = extractJikanData(jikanRes, data.title);
 
@@ -192,13 +229,20 @@ const Watch = () => {
 
           setAnime(mergedData);
 
-          // data.episodes / data.episode_list sudah di-normalisasi oleh adapter
+          // data.episodes / data.episode_list sudah di-normalisasi oleh adapter.
+          // API mengembalikan list TERBALIK (episode terbaru dulu) → sort ascending.
           const epList = data.episodes || data.episode_list || [];
-          const normalizedEps = epList.map((ep, i) => {
-            const s = ep.eps_slug || ep.slug || ep.id || '';
-            const num = ep.eps_title?.match(/(\d+)$/)?.[1] || s.match(/-episode-(\d+)$/)?.[1] || String(i + 1);
-            return { id: s, slug: s, index: parseInt(num) || (i + 1), title: ep.eps_title || '' };
-          });
+          const normalizedEps = epList
+            .map((ep, i) => {
+              const s = ep.eps_slug || ep.slug || ep.id || '';
+              const num =
+                (ep.eps != null ? String(ep.eps) : null) ||
+                ep.eps_title?.match(/episode\s*(\d+)/i)?.[1] ||
+                s.match(/-episode-(\d+)(?:-[a-z0-9-]*)?$/i)?.[1] ||
+                String(i + 1);
+              return { id: s, slug: s, index: parseInt(num) || (i + 1), title: ep.eps_title || '' };
+            })
+            .sort((a, b) => a.index - b.index);
           setEpisodes(normalizedEps);
 
           updateMetaTags(
@@ -207,40 +251,48 @@ const Watch = () => {
             data.poster
           );
 
-          // Episode slug langsung → apply
-          if (isEpisodeSlug && epDataRaw) {
-            const resolved = await resolveStreamLinks(epDataRaw);
-            applyEpData(resolved, slug);
-          }
-
-          // Anime slug murni → fetch eps pertama dari list, update URL
-          if (!isEpisodeSlug && normalizedEps.length > 0) {
-            const firstEp = normalizedEps[0];
-            const firstEpSlug = firstEp.slug || `${animeSlug}-episode-${firstEp.index}`;
-            navigate(`/anime/${firstEpSlug}`, { replace: true });
-            setIsEpLoading(true);
-            try {
-              const firstEpData = await fetchEpisode(firstEpSlug);
-              const resolved = await resolveStreamLinks(firstEpData);
-              if (resolved) applyEpData(resolved, firstEpSlug);
-            } catch (e) {
-              console.error('First ep fetch failed', e);
+          if (isEpisodeSlug) {
+            if (epDataRaw) {
+              const resolved = await resolveStreamLinks(epDataRaw);
+              if (!cancelled) applyEpData(resolved, slug);
+            } else {
+              // Episode tidak ditemukan → kosongkan player tapi tetap tampilkan detail
+              applyEpData({ stream_links: [], download_links: [], next_slug: null, prev_slug: null }, slug);
             }
-            setIsEpLoading(false);
+          } else if (normalizedEps.length > 0) {
+            // Anime page → arahkan ke episode 1 (atau nomor episode dari URL,
+            // mis. link "Lanjutkan" dari History /anime/:id/:no).
+            // Setelah navigate, effect re-run dengan slug episode (alur A).
+            let target = normalizedEps[0];
+            if (episodeParam) {
+              const num = parseInt(episodeParam, 10);
+              const found = normalizedEps.find((e) => e.index === num);
+              if (found) target = found;
+            }
+            if (target.slug) navigate(`/anime/${target.slug}`, { replace: true });
           }
         }
 
         // Rekomendasi (popular)
         const recData = Array.isArray(popularData) ? popularData : [];
-        setRecommendations(recData.slice(0, 5));
+        if (!cancelled) setRecommendations(recData.slice(0, 5));
       } catch (e) {
-        console.error('Watch load failed', e);
+        if (!cancelled) console.error('Watch load failed', e);
+      } finally {
+        if (!cancelled) {
+          setIsLoading(false);
+          setIsEpLoading(false);
+        }
       }
-      setIsLoading(false);
     };
 
     load();
 
+    return () => { cancelled = true; };
+  }, [slug, episodeParam]);
+
+  // Judul & meta default dipulihkan saat keluar halaman nonton
+  useEffect(() => {
     return () => {
       updateMetaTags(
         'NefuSoft - Streaming Anime Sub Indo Gratis',
@@ -248,23 +300,18 @@ const Watch = () => {
         'https://raw.githubusercontent.com/alip-jmbd/alipp/main/icons-full.jpg'
       );
     };
-  }, [animeSlug]);
+  }, []);
 
   // Fetch episode saat ganti episode
-  const changeEpisode = async (epObj) => {
-    const epSlug = epObj.slug || `${animeSlug}-episode-${epObj.index}`;
-    navigate(`/anime/${epSlug}`, { replace: true });
+  // Ganti episode → cukup perbarui URL. Effect [slug] di atas yang fetch datanya,
+  // jadi tidak ada double-request dan loading state terpusat di satu tempat.
+  const changeEpisode = (epObj) => {
+    const epSlug = epObj.slug || epObj.id;
+    if (!epSlug || epSlug === slug) return;
     setIsEpLoading(true);
     setServers([]);
     setSelectedServer(null);
-    try {
-      const epData = await fetchEpisode(epSlug);
-      const resolved = await resolveStreamLinks(epData);
-      if (resolved) applyEpData(resolved, epSlug);
-    } catch (e) {
-      console.error('Change episode failed', e);
-    }
-    setIsEpLoading(false);
+    navigate(`/anime/${epSlug}`, { replace: true });
   };
 
   const handlePrev = () => { if (prevSlug) changeEpisode({ slug: prevSlug }); };
