@@ -13,6 +13,7 @@ const CardSkeleton = () => (
 
 const AnimeCard = ({ a, onClick, index }) => {
   const [isVisible, setIsVisible] = useState(false);
+  const getProxyUrl = (url) => url ? `https://cf.tiyanstores.workers.dev/?url=${encodeURIComponent(url)}` : '';
 
   useEffect(() => {
     const timer = setTimeout(() => setIsVisible(true), (index % 15) * 40);
@@ -22,7 +23,14 @@ const AnimeCard = ({ a, onClick, index }) => {
   return (
     <div onClick={onClick} className={`w-full flex flex-col gap-2 group cursor-pointer active:scale-95 transition-all duration-700 ease-out ${isVisible ? 'opacity-100 blur-none translate-y-0' : 'opacity-0 blur-xl translate-y-4'}`}>
       <div className="relative aspect-[3/4.5] w-full overflow-hidden bg-[#16161a] rounded-sm shadow-xl">
-        <img src={a.poster} referrerPolicy="no-referrer" className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
+        <img
+          src={getProxyUrl(a.image_poster)}
+          referrerPolicy="no-referrer"
+          className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
+          fetchPriority={index < 4 ? "high" : "low"}
+          loading={index < 4 ? "eager" : "lazy"}
+          decoding={index < 4 ? "sync" : "async"}
+        />
       </div>
       <h3 className="text-[9px] font-bold text-white/60 line-clamp-1 capitalize group-hover:text-[#F6CF80] transition-colors">{a.title.toLowerCase()}</h3>
     </div>
@@ -78,41 +86,74 @@ const Explore = () => {
   const query = searchParams.get('q') || '';
   const navigate = useNavigate();
   
-  const[genres, setGenres] = useState([]);
+  const [genres, setGenres] = useState([]);
   const [selectedGenres, setSelectedGenres] = useState([]);
-  const[results, setResults] = useState([]);
+  const [results, setResults] = useState([]);
   const [page, setPage] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
 
+  // Fetch genres with caching
   useEffect(() => {
     window.scrollTo(0, 0);
     let isMounted = true;
+    
+    // Cek cache dulu
+    if (window.__NEFUSOFT_CACHE__?.genres) {
+      setGenres(window.__NEFUSOFT_CACHE__.genres);
+      return;
+    }
+    
     fetch('/anime/stream/genres')
       .then(r => r.json())
-      .then(d => { if (isMounted) setGenres(d.data ||[]); })
+      .then(d => { 
+        if (isMounted) {
+          const fetchedGenres = d.data || [];
+          setGenres(fetchedGenres);
+          // Simpan ke cache
+          if (!window.__NEFUSOFT_CACHE__) window.__NEFUSOFT_CACHE__ = {};
+          window.__NEFUSOFT_CACHE__.genres = fetchedGenres;
+        }
+      })
       .catch(() => {});
     return () => { isMounted = false; };
   }, []);
 
+  // Reset page when query or genres change
   useEffect(() => {
     setPage(0);
-  },[query, selectedGenres]);
+  }, [query, selectedGenres]);
 
+  // Fetch results with caching
   useEffect(() => {
     let isMounted = true;
     const fetchResults = async () => {
+      // Cek cache untuk popular results
+      if (!query && selectedGenres.length === 0 && page === 0 && window.__NEFUSOFT_CACHE__?.popular) {
+        setResults(window.__NEFUSOFT_CACHE__.popular);
+        setIsLoading(false);
+        return;
+      }
+
       setIsLoading(true);
       try {
-        let url = `/anime/stream/popular`;
+        let url = `/anime/stream/popular${page}`;
         if (query) {
-          url = `/anime/stream/search/${encodeURIComponent(query)}`;
+          url = `/anime/stream/search/${encodeURIComponent(query)}&page=${page}`;
         } else if (selectedGenres.length > 0) {
-          // API baru: /genres/:slug/:page - pakai genre pertama yg dipilih
-          url = `/anime/stream/genres/${selectedGenres[0]}/${page + 1}`;
+          const genreQuery = selectedGenres.map(id => `id=${id}`).join('&');
+          url = `/anime/stream/genres/${genreQuery}&page=${page}`;
         }
         
         const res = await fetch(url).then(r => r.json());
-        if (isMounted) setResults(Array.isArray(res.data) ? res.data : (Array.isArray(res) ? res : []));
+        if (isMounted) {
+          const fetchedData = res.data || [];
+          setResults(fetchedData);
+          // Cache popular results
+          if (!query && selectedGenres.length === 0 && page === 0) {
+            if (!window.__NEFUSOFT_CACHE__) window.__NEFUSOFT_CACHE__ = {};
+            window.__NEFUSOFT_CACHE__.popular = fetchedData;
+          }
+        }
       } catch (e) {
         if (isMounted) setResults([]);
       } finally {
@@ -121,18 +162,17 @@ const Explore = () => {
     };
     fetchResults();
     return () => { isMounted = false; };
-  },[page, query, selectedGenres]);
+  }, [page, query, selectedGenres]);
 
   const toggleGenre = (id) => {
     setSelectedGenres(prev => prev.includes(id) ? prev.filter(g => g !== id) : [...prev, id]);
   };
 
   return (
-    <div className="min-h-screen bg-[#0a0a0c] font-nunito selection:bg-[#F6CF80] selection:text-black pb-24">
+    <div className="min-h-screen bg-[#0a0a0c] selection:bg-[#F6CF80] selection:text-black pb-24">
       <style>{`
         @keyframes shimmer { 0% { transform: translate3d(-100%, 0, 0) skewX(-20deg); } 100% { transform: translate3d(200%, 0, 0) skewX(-20deg); } }
         body, html { background-color: #0a0a0c !important; color: white; margin: 0; padding: 0; overscroll-behavior-y: none; }
-        body { font-family: 'Nunito', sans-serif; }
         .no-scrollbar::-webkit-scrollbar { display: none; }
       `}</style>
       <Navbar />
@@ -143,8 +183,8 @@ const Explore = () => {
             <h2 className="text-white font-black uppercase mb-4 text-sm tracking-wide">Filter Genre</h2>
             <div className="flex overflow-x-auto gap-2 pb-2 no-scrollbar">
               {genres.map(g => (
-                <button key={g.slug} onClick={() => toggleGenre(g.slug)} className={`px-4 py-2 text-[10px] whitespace-nowrap font-bold rounded-xl transition-colors ${selectedGenres.includes(g.slug) ? 'bg-[#F6CF80] text-black shadow-lg shadow-[#F6CF80]/20' : 'bg-white/5 border border-white/10 text-white/50 hover:bg-white/10 hover:text-white'}`}>
-                  {g.title}
+                <button key={g.id} onClick={() => toggleGenre(g.id)} className={`px-4 py-2 text-[10px] whitespace-nowrap font-bold rounded-xl transition-colors ${selectedGenres.includes(g.id) ? 'bg-[#F6CF80] text-black shadow-lg shadow-[#F6CF80]/20' : 'bg-white/5 border border-white/10 text-white/50 hover:bg-white/10 hover:text-white'}`}>
+                  {g.name}
                 </button>
               ))}
             </div>
@@ -160,7 +200,7 @@ const Explore = () => {
 
         <div className="grid grid-cols-[repeat(auto-fill,minmax(95px,1fr))] gap-3 px-2">
           {isLoading ? [...Array(18)].map((_, i) => <CardSkeleton key={`shimmer-${i}`} />) : results.map((a, index) => (
-            <AnimeCard key={a.id} a={a} index={index} onClick={() => navigate(`/anime/${a.slug}`)} />
+            <AnimeCard key={a.id} a={a} index={index} onClick={() => navigate(`/anime/${a.id}-${(a.title||'').toLowerCase().replace(/[^a-z0-9]+/g, '-')}`)} />
           ))}
         </div>
         

@@ -14,25 +14,76 @@
   
   <link rel="icon" type="image/jpeg" href="https://raw.githubusercontent.com/alip-jmbd/alipp/main/icons-full.jpg" />
   
-  <link rel="preload" as="image" href="/img/welcomebanner.webp" type="image/webp" fetchpriority="high" />
-  <link rel="preload" as="image" href="/img/kaguya.webp" type="image/webp" fetchpriority="high" />
-
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  
-  <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Quicksand:wght@600;700;800;900&display=swap">
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Quicksand:wght@600;700;800;900&display=swap" media="print" onload="this.media='all'">
+  <link rel="preconnect" href="https://cf.tiyanstores.workers.dev" crossorigin>
+  <link rel="preconnect" href="https://www.sankavollerei.com" crossorigin>
+  <link rel="preconnect" href="https://raw.githubusercontent.com" crossorigin>
+  <link rel="preconnect" href="https://be.komikcast.cc" crossorigin>
+  <link rel="preconnect" href="https://hdthvmpbgaqprlqznrtt.supabase.co" crossorigin>
+
+  <link rel="dns-prefetch" href="https://fonts.googleapis.com">
+  <link rel="dns-prefetch" href="https://fonts.gstatic.com">
+  <link rel="dns-prefetch" href="https://cf.tiyanstores.workers.dev">
+  <link rel="dns-prefetch" href="https://www.sankavollerei.com">
+  <link rel="dns-prefetch" href="https://raw.githubusercontent.com">
+  <link rel="dns-prefetch" href="https://be.komikcast.cc">
+  <link rel="dns-prefetch" href="https://hdthvmpbgaqprlqznrtt.supabase.co">
+
+  <link rel="preload" as="image" href="/img/welcomebanner.webp" type="image/webp" fetchpriority="high" />
+  <link rel="preload" as="image" href="/img/nefusoft.webp" type="image/webp" fetchpriority="high" />
+
+  <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Quicksand:wght@600;700;800;900&display=swap" />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Quicksand:wght@600;700;800;900&display=swap" media="print" onload="this.media='all'" />
   <noscript>
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Quicksand:wght@600;700;800;900&display=swap">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Quicksand:wght@600;700;800;900&display=swap" />
   </noscript>
 
   <style>
-    body { background-color: #0a0a0c; margin: 0; color: white; font-family: 'Quicksand', sans-serif; overflow-x: hidden; }
+    body { background-color: #0a0a0c; margin: 0; color: white; font-family: 'Quicksand', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif; overflow-x: hidden; }
     footer { content-visibility: auto; contain-intrinsic-size: 300px; }
+
+    .nefu-initial-loading {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      background-color: #0a0a0c;
+      color: white;
+      font-family: 'Quicksand', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+    }
+    .nefu-logo-container {
+      position: relative;
+      margin-bottom: 24px;
+      animation: pulseLogo 1.8s ease-in-out infinite alternate;
+    }
+    .nefu-spinner {
+      width: 40px;
+      height: 40px;
+      border: 3px solid rgba(246, 207, 128, 0.1);
+      border-radius: 50%;
+      border-top-color: #F6CF80;
+      animation: nefuSpin 1s ease-in-out infinite;
+    }
+    @keyframes pulseLogo {
+      0% { transform: scale(0.95); opacity: 0.8; }
+      100% { transform: scale(1.05); opacity: 1; }
+    }
+    @keyframes nefuSpin {
+      to { transform: rotate(360deg); }
+    }
   </style>
 </head>
 <body>
-  <div id="root"></div>
+  <div id="root">
+    <div class="nefu-initial-loading">
+      <div class="nefu-logo-container">
+        <img src="/img/nefusoft.webp" alt="NefuSoft" width="96" height="96" style="width: 96px; height: 96px; object-fit: contain;" />
+      </div>
+      <div class="nefu-spinner"></div>
+    </div>
+  </div>
   <script type="module" src="/src/main.jsx"></script>
 </body>
 </html>

@@ -4,7 +4,7 @@ const Footer = () => (
   <footer className="mt-16 bg-[#0a0a0c] border-t border-white/5 pt-12 pb-0 px-6">
     <div className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-8 mb-12">
       <div className="flex flex-col items-center md:items-start">
-        <img src="https://raw.githubusercontent.com/alip-jmbd/alipp/main/icon-rbg.png" alt="NefuSoft" className="w-20 md:w-28 aspect-square object-contain mb-4" />
+        <img src="/img/nefusoft.webp" alt="NefuSoft" className="w-20 md:w-28 aspect-square object-contain mb-4" />
       </div>
       <div className="text-center md:text-left">
         <h4 className="text-white font-black mb-3 text-sm tracking-wide">Tentang NefuSoft</h4>

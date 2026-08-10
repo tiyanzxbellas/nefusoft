@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
+import { saveHistoryItem, getHistory } from '../utils/historyManager';
+import { isFavorite, saveFavorite, removeFavorite } from '../utils/favoritesManager';
 
 const ShimmerEffect = () => (
   <div className="absolute top-0 bottom-0 left-0 w-[150%] animate-[shimmer_1.5s_infinite] bg-gradient-to-r from-transparent via-white/5 to-transparent z-10" style={{ transform: 'translate3d(-100%, 0, 0) skewX(-20deg)' }} />
@@ -64,6 +66,7 @@ const Watch = () => {
   const [isEpLoading, setIsEpLoading] = useState(false);
   const [toast, setToast] = useState('');
   const [autoNext, setAutoNext] = useState(() => localStorage.getItem('nefusoft_autonext') === 'true');
+  const [isFavorited, setIsFavorited] = useState(false);
 
   const currentEpNum = episodes.find(e => e.id === currentEpId)?.index
     || currentEpId?.match(/-episode-(\d+)$/)?.[1]
@@ -239,6 +242,78 @@ const Watch = () => {
   const toggleAutoNext = () => {
     setAutoNext(prev => { const val = !prev; localStorage.setItem('nefusoft_autonext', val); return val; });
   };
+
+  // Favorites
+  useEffect(() => {
+    if (!animeSlug) return;
+    const animeId = animeSlug;
+    const handleFavUpdate = () => { setIsFavorited(isFavorite(animeId)); };
+    setIsFavorited(isFavorite(animeId));
+    window.addEventListener('nefusoft-favorites-updated', handleFavUpdate);
+    return () => { window.removeEventListener('nefusoft-favorites-updated', handleFavUpdate); };
+  }, [animeSlug]);
+
+  useEffect(() => {
+    return () => {
+      window.__CURRENT_ANIME__ = null;
+      window.dispatchEvent(new Event('nefusoft-anime-updated'));
+    };
+  }, []);
+
+  const toggleFavorite = () => {
+    if (!anime) return;
+    const animePayload = {
+      anime_id: animeSlug,
+      anime_slug: animeSlug,
+      anime_title: anime.title,
+      anime_image: anime.poster,
+      type: anime.type,
+      status: anime.status,
+    };
+    if (isFavorited) {
+      removeFavorite(animeSlug);
+      setToast('Dihapus dari Favorit!');
+    } else {
+      saveFavorite(animePayload);
+      setToast('Ditambahkan ke Favorit!');
+    }
+    setTimeout(() => setToast(''), 3000);
+  };
+
+  // Update __CURRENT_ANIME__ for Navbar favorite button
+  useEffect(() => {
+    if (anime) {
+      window.__CURRENT_ANIME__ = {
+        anime_id: animeSlug,
+        anime_slug: animeSlug,
+        anime_title: anime.title,
+        anime_image: anime.poster,
+        type: anime.type,
+        status: anime.status,
+      };
+      window.dispatchEvent(new Event('nefusoft-anime-updated'));
+    }
+  }, [anime, animeSlug]);
+
+  // Save watch history on episode change and periodically
+  useEffect(() => {
+    if (!anime || !currentEpId) return;
+    const interval = setInterval(() => {
+      const iframe = document.querySelector('iframe');
+      // Save basic history entry
+      saveHistoryItem({
+        anime_id: animeSlug,
+        anime_slug: animeSlug,
+        anime_title: anime.title,
+        anime_image: anime.poster,
+        episode_index: currentEpNum,
+        episode_id: currentEpId,
+        current_time: 1,
+        duration: 24 * 60,
+      }).catch(() => {});
+    }, 10000);
+    return () => clearInterval(interval);
+  }, [anime, currentEpId, currentEpNum, animeSlug]);
 
   const getProxyUrl = (url) => url ? `https://cf.elainaa.workers.dev/${url}` : '';
 
@@ -434,10 +509,25 @@ const Watch = () => {
                       <span className="bg-[#F6CF80] text-black text-[9px] px-2.5 py-1 rounded-sm uppercase font-black tracking-widest">{anime.type}</span>
                       <span className="bg-white/10 text-white/80 text-[9px] px-2.5 py-1 rounded-sm uppercase font-bold tracking-widest border border-white/5">{anime.status}</span>
                       <span className="bg-white/10 text-white/80 text-[9px] px-2.5 py-1 rounded-sm uppercase font-bold tracking-widest border border-white/5">{anime.aired_start || '?'}</span>
-                      <span className="bg-[#fbbf24]/10 text-[#fbbf24] text-[9px] px-2.5 py-1 rounded-sm uppercase font-bold flex items-center gap-1.5 border border-[#fbbf24]/20">
-                        <svg className="w-3 h-3" viewBox="0 0 24 24" fill="currentColor"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/></svg>
-                        {anime.favorites}
-                      </span>
+                      {anime.favorites !== undefined && anime.favorites !== null && (
+                        <span className="bg-[#fbbf24]/10 text-[#fbbf24] text-[9px] px-2.5 py-1 rounded-sm uppercase font-bold flex items-center gap-1.5 border border-[#fbbf24]/20">
+                          <svg className="w-3 h-3" viewBox="0 0 24 24" fill="currentColor"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/></svg>
+                          {anime.favorites}
+                        </span>
+                      )}
+                      <button
+                        onClick={toggleFavorite}
+                        className={`text-[9px] px-2.5 py-1 rounded-sm uppercase font-black tracking-widest flex items-center gap-1.5 border transition-all cursor-pointer ${
+                          isFavorited
+                            ? 'bg-red-500/20 text-red-400 border-red-500/30'
+                            : 'bg-white/5 hover:bg-white/10 text-white border-white/10'
+                        }`}
+                      >
+                        <svg className="w-3.5 h-3.5" fill={isFavorited ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+                        </svg>
+                        {isFavorited ? 'Favorit' : 'Tambah Favorit'}
+                      </button>
                     </div>
                     <p className="text-white/70 text-xs md:text-sm leading-relaxed mb-8 font-medium">{anime.synopsis}</p>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-y-4 gap-x-8 text-[10px] md:text-xs">

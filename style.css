@@ -4,4 +4,8 @@
   .hero-slide {
     backface-visibility: hidden;
   }
+  .lazy-section {
+    content-visibility: auto;
+    contain-intrinsic-size: auto 500px;
+  }
 }
