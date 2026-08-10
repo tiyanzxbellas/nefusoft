@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { supabase } from '../utils/supabaseClient';
+import { getSupabase } from '../utils/supabaseLazy';
 import { isFavorite, saveFavorite, removeFavorite } from '../utils/favoritesManager';
 import { getHistory } from '../utils/historyManager';
 import { getProfile, updateProfile, syncProfileLevel, calculateLevel } from '../utils/profileManager';
@@ -140,6 +140,7 @@ const Navbar = () => {
       const updated = await updateProfile(user.id, { username: editUsername.trim(), avatar_url: editAvatarUrl.trim() });
       if (updated) {
         setProfile(updated);
+        const supabase = await getSupabase();
         await supabase.auth.updateUser({ data: { full_name: editUsername.trim(), avatar_url: editAvatarUrl.trim() } });
         alert('Profil berhasil diperbarui!');
         setShowProfileModal(false);
@@ -158,9 +159,15 @@ const Navbar = () => {
   }, []);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => { setUser(session?.user ?? null); });
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => { setUser(session?.user ?? null); });
-    return () => { subscription.unsubscribe(); };
+    let subscription = null;
+    let active = true;
+    getSupabase().then((supabase) => {
+      if (!active) return;
+      supabase.auth.getSession().then(({ data: { session } }) => { setUser(session?.user ?? null); });
+      const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => { setUser(session?.user ?? null); });
+      subscription = sub;
+    });
+    return () => { active = false; subscription?.unsubscribe(); };
   }, []);
 
   useEffect(() => { if (user) loadUserProfile(user); else setProfile(null); }, [user]);
@@ -205,6 +212,7 @@ const Navbar = () => {
 
   const handleGoogleLogin = async () => {
     try {
+      const supabase = await getSupabase();
       const { error } = await supabase.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: window.location.origin + '/home' } });
       if (error) throw error;
     } catch (e) { console.error('Google Auth Error:', e.message); alert('Gagal login dengan Google: ' + e.message); }
@@ -212,6 +220,7 @@ const Navbar = () => {
 
   const handleLogout = async () => {
     try {
+      const supabase = await getSupabase();
       const { error } = await supabase.auth.signOut();
       if (error) throw error;
       setUser(null); setShowLoginPopup(false); setShowProfileDropdown(false); navigate('/home');

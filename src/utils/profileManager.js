@@ -1,4 +1,4 @@
-import { supabase } from './supabaseClient';
+import { getSupabase } from './supabaseLazy';
 
 /**
  * Calculates user level based on unique/episodes watched count.
@@ -43,6 +43,7 @@ export async function getProfile(userId, userMetadata = {}) {
   if (!userId) return null;
 
   try {
+    const supabase = await getSupabase();
     const { data, error } = await supabase
       .from('profiles')
       .select('*')
@@ -95,6 +96,7 @@ export async function updateProfile(userId, { username, avatar_url }) {
   if (!userId) return null;
 
   try {
+    const supabase = await getSupabase();
     const { data, error } = await supabase
       .from('profiles')
       .update({
@@ -121,6 +123,7 @@ export async function syncProfileLevel(userId, localHistoryCount) {
   if (!userId) return null;
 
   try {
+    const supabase = await getSupabase();
     const { level } = calculateLevel(localHistoryCount);
 
     const { data, error } = await supabase
