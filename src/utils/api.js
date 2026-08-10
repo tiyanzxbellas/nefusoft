@@ -17,10 +17,15 @@
  * ----------------------------------------------------------------
  * Server API Sanka Vollerei TIDAK mengirim header CORS, jadi request
  * langsung dari browser (fetch ke origin lain) selalu diblokir.
- * Semua request di file ini dirutekan lewat CORS proxy chain:
- *   1. Worker Cloudflare milik project (sama seperti halaman Donghua)
- *   2. Fallback public proxies (corsproxy.io, allorigins, codetabs)
- *   3. Direct fetch (fallback terakhir)
+ *
+ * STRATEGI SAAT INI (lebih cepat):
+ *   1. Semua request API lewat path same-origin `/api` (VITE_API_BASE=/api).
+ *      Di production (Vercel) path ini di-proxy server-side oleh vercel.json
+ *      ke upstream; di dev diteruskan vite proxy. Karena same-origin, tidak
+ *      ada CORS block dan tidak bergantung pada CORS proxy pihak ketiga.
+ *   2. Kalau jalur same-origin tidak tersedia (host statis tanpa rewrite),
+ *      fallback otomatis ke CORS proxy chain (paralel, first-success wins):
+ *      Worker Cloudflare milik project → corsproxy.io → allorigins → codetabs.
  * Proxy utama bisa dioverride via env `VITE_CORS_PROXY`
  * (set ke "direct" untuk menonaktifkan proxy sepenuhnya).
  *
@@ -46,7 +51,11 @@
  * React bisa cancel request saat komponen unmount.
  */
 
-const API_BASE = import.meta.env.VITE_API_BASE || 'https://www.sankavollerei.web.id/anime';
+const API_BASE = import.meta.env.VITE_API_BASE || '/api';
+
+// Upstream API asli (dipakai untuk fallback CORS-proxy kalau jalur same-origin gagal,
+// misal di host statis yang tidak punya rewrite/proxy /api).
+const UPSTREAM_API = 'https://www.sankavollerei.web.id/anime';
 
 // Cloudflare Worker yang dipakai untuk proxy gambar & mp4 (handle referer/CORS)
 const IMG_PROXY = 'https://cf.tiyanstores.workers.dev/?url=';
@@ -132,10 +141,16 @@ export const clearApiCache = () => responseCache.clear();
 
 // Helper low-level fetch dengan error handling yang konsisten.
 //
-// SEMUA CORS proxy (termasuk direct fetch) dicoba SECARA PARALEL dan response
-// sukses pertama yang menang (Promise.any). Ini menghindari masalah utama lama:
-// request berjalan SEKUENSIAL (proxy#1 timeout 15s → proxy#2 timeout 15s → …)
-// yang bikin halaman nunggu puluhan detik saat proxy utama lambat/down.
+// STRATEGI PENGAMBILAN (bikin loading jauh lebih cepat):
+// 1) Kalau VITE_API_BASE adalah path same-origin (`/api`), jalur INI dicoba
+//    lebih dulu. Di Vercel di-proxy server-side (vercel.json), di dev lewat
+//    vite proxy → karena same-origin TIDAK ada CORS block & tidak lewat proxy
+//    pihak ketiga yang lambat.
+// 2) SEMUA CORS proxy (termasuk direct upstream) dijalankan PARALEL dan
+//    response sukses pertama yang menang (Promise.any). Ini fallback biar app
+//    tetap jalan di host statis tanpa rewrite /api.
+//    Sebelumnya request berjalan SEKUENSIAL (proxy#1 timeout → proxy#2 timeout)
+//    yang bikin halaman nunggu puluhan detik saat proxy utama lambat/down.
 const request = async (path, { signal, skipCache = false } = {}) => {
   const target = path.startsWith('http') ? path : `${API_BASE}${path}`;
   const cacheKey = target;
@@ -147,7 +162,13 @@ const request = async (path, { signal, skipCache = false } = {}) => {
 
   if (signal?.aborted) throw signal.reason ?? new DOMException('Aborted', 'AbortError');
 
-  const urls = [...CORS_PROXIES.map((p) => `${p}${encodeURIComponent(target)}`), target];
+  // URL asli upstream — dipakai untuk fallback lewat CORS proxy.
+  const upstream = path.startsWith('http') ? path : `${UPSTREAM_API}${path}`;
+  const isSameOrigin = !path.startsWith('http') && API_BASE.startsWith('/');
+
+  const urls = isSameOrigin
+    ? [target, ...CORS_PROXIES.map((p) => `${p}${encodeURIComponent(upstream)}`), upstream]
+    : [...CORS_PROXIES.map((p) => `${p}${encodeURIComponent(upstream)}`), upstream];
 
   const attempt = async (url) => {
     if (signal?.aborted) throw signal.reason ?? new DOMException('Aborted', 'AbortError');
