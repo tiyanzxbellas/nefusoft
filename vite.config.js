@@ -9,6 +9,35 @@ export default defineConfig({
       '/anime': {
         target: 'https://www.sankavollerei.com',
         changeOrigin: true,
+      },
+      '/api': {
+        target: 'https://www.sankavollerei.com',
+        changeOrigin: true,
+      }
+    }
+  },
+  build: {
+    target: 'esnext',
+    cssMinify: true,
+    minify: 'oxc',
+    rolldownOptions: {
+      output: {
+        minify: {
+          compress: {
+            dropConsole: true,
+          }
+        },
+        manualChunks(id) {
+          if (id.includes('node_modules')) {
+            if (id.includes('react') || id.includes('scheduler')) {
+              return 'vendor-react';
+            }
+            if (id.includes('@supabase') || id.includes('supabase')) {
+              return 'vendor-supabase';
+            }
+            return 'vendor';
+          }
+        }
       }
     }
   }

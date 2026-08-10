@@ -5,6 +5,21 @@
       "destination": "https://www.sankavollerei.com/anime/:path*"
     },
     {
+      "source": "/api/:path*",
+      "destination": "https://www.sankavollerei.com/anime/:path*"
+    },
+    {
+      "source": "/(.*\\.mp4)",
+      "has": [
+        {
+          "type": "query",
+          "key": "url",
+          "value": "(?<url>.*)"
+        }
+      ],
+      "destination": "https://cf.tiyanstores.workers.dev/?url=:url"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }
