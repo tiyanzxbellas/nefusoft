@@ -4,6 +4,7 @@ const LOCAL_HISTORY_KEY = 'nefusoft_watch_history';
  * Normalizes history items structure.
  */
 function normalizeItem(item) {
+  if (!item || typeof item !== 'object') return null;
   return {
     anime_id: item.anime_id || item.animeId || '',
     anime_slug: item.anime_slug || item.animeSlug || '',
@@ -22,8 +23,10 @@ function normalizeItem(item) {
  */
 export async function getHistory() {
   try {
-    const localData = JSON.parse(localStorage.getItem(LOCAL_HISTORY_KEY) || '[]');
-    const localHistory = localData.map(normalizeItem);
+    const raw = localStorage.getItem(LOCAL_HISTORY_KEY);
+    const localData = raw ? JSON.parse(raw) : [];
+    if (!Array.isArray(localData)) return [];
+    const localHistory = localData.map(normalizeItem).filter(Boolean);
     // Sort local history by updated_at descending
     return localHistory.sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime());
   } catch (err) {
@@ -37,13 +40,15 @@ export async function getHistory() {
  */
 export async function saveHistoryItem(item) {
   try {
+    if (!item) return;
     const normalized = normalizeItem({
       ...item,
       updated_at: new Date().toISOString(),
     });
+    if (!normalized || !normalized.anime_id) return;
 
-    let localHistory = JSON.parse(localStorage.getItem(LOCAL_HISTORY_KEY) || '[]');
-    localHistory = localHistory.map(normalizeItem);
+    let localHistory = await getHistory();
+    if (!Array.isArray(localHistory)) localHistory = [];
 
     // Remove existing entry for same anime and same episode
     localHistory = localHistory.filter(i => !(i.anime_id === normalized.anime_id && String(i.episode_index) === String(normalized.episode_index)));
@@ -71,7 +76,9 @@ export async function saveHistoryItem(item) {
  */
 export async function deleteHistoryItem(animeId, episodeIndex) {
   try {
-    let localHistory = JSON.parse(localStorage.getItem(LOCAL_HISTORY_KEY) || '[]');
+    if (!animeId) return;
+    let localHistory = await getHistory();
+    if (!Array.isArray(localHistory)) localHistory = [];
     if (episodeIndex !== undefined && episodeIndex !== null) {
       localHistory = localHistory.filter(i => !((i.anime_id || i.animeId) === animeId && String(i.episode_index || i.episodeIndex || '1') === String(episodeIndex)));
     } else {

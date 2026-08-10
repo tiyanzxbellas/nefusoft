@@ -79,7 +79,7 @@ const Watch = () => {
   const [isFavorited, setIsFavorited] = useState(false);
 
   const currentEpNum = episodes.find(e => e.id === currentEpId)?.index
-    || currentEpId?.match(/-episode-(\d+)(?:-[a-z0-9-]*)?$/i)?.[1]
+    || String(currentEpId || '').match(/-episode-(\d+)(?:-[a-z0-9-]*)?$/i)?.[1]
     || '?';
 
   const updateMetaTags = (title, desc, image) => {
@@ -101,23 +101,24 @@ const Watch = () => {
 
   const applyEpData = (epData, epSlug) => {
     // epData dari adapter sudah dalam shape lama: { stream_links, download_links, next_slug, prev_slug }
-    const streamList = epData.stream_links || epData.server || [];
-    const dlList = epData.download_links || [];
-    const svrs = streamList.map((s, i) => ({ id: s.server || String(i), server: s.server || 'Server ' + (i + 1), link: s.url || s.link || '' }));
-    const dls = dlList.map((s, i) => ({ id: s.server || String(i), server: s.server || 'Download ' + (i + 1), link: s.url || s.link || '' }));
+    const streamList = Array.isArray(epData?.stream_links) ? epData.stream_links : Array.isArray(epData?.server) ? epData.server : [];
+    const dlList = Array.isArray(epData?.download_links) ? epData.download_links : [];
+    const svrs = streamList.filter(Boolean).map((s, i) => ({ id: s.server || String(i), server: s.server || 'Server ' + (i + 1), link: s.url || s.link || '' }));
+    const dls = dlList.filter(Boolean).map((s, i) => ({ id: s.server || String(i), server: s.server || 'Download ' + (i + 1), link: s.url || s.link || '' }));
     setServers(svrs);
     setDownloadServers(dls);
     setSelectedServer(svrs[0] || null);
-    setNextSlug(epData.next_slug || null);
-    setPrevSlug(epData.prev_slug || null);
+    setNextSlug(epData?.next_slug || null);
+    setPrevSlug(epData?.prev_slug || null);
     setCurrentEpId(epSlug);
   };
 
   // Resolve serverId (kalau ada) ke URL embed sebenarnya
   const resolveStreamLinks = async (epData) => {
-    if (!epData || !epData.stream_links) return epData;
+    if (!epData || !Array.isArray(epData.stream_links)) return epData;
     const resolved = await Promise.all(
       epData.stream_links.map(async (s) => {
+        if (!s) return s;
         if (s.url) return s; // sudah ada URL
         if (s.serverId) {
           try {
@@ -135,23 +136,23 @@ const Watch = () => {
 
   // Helper: ambil data Jikan dari hasil search, cari exact match dulu
   const extractJikanData = (jikanRes, title) => {
-    const results = jikanRes?.data || [];
+    const results = Array.isArray(jikanRes?.data) ? jikanRes.data : [];
     if (!results.length) return {};
 
-    const titleLower = title.toLowerCase();
+    const titleLower = String(title || '').toLowerCase();
     const match = results.find(a =>
-      a.title?.toLowerCase() === titleLower ||
-      a.title_english?.toLowerCase() === titleLower ||
-      a.title_japanese?.toLowerCase() === titleLower
+      (a?.title || '').toLowerCase() === titleLower ||
+      (a?.title_english || '').toLowerCase() === titleLower ||
+      (a?.title_japanese || '').toLowerCase() === titleLower
     ) || results[0]; // fallback ke index 0
 
     return {
-      studio: match.studios?.[0]?.name || null,
-      year: match.year || null,
-      day: match.broadcast?.day || null,
-      status: match.status || null, 
-      type: match.type || null,
-      aired_start: match.aired?.prop?.from?.year         // ← tambah
+      studio: match?.studios?.[0]?.name || null,
+      year: match?.year || null,
+      day: match?.broadcast?.day || null,
+      status: match?.status || null, 
+      type: match?.type || null,
+      aired_start: match?.aired?.prop?.from?.year
       ? `${match.aired.prop.from.year}` : null,
     };
   };
@@ -196,7 +197,7 @@ const Watch = () => {
 
         // Buat query Jikan dari animeId (strip suffix bahasa, ganti - jadi spasi)
         const jikanQuery = encodeURIComponent(
-          animeId.replace(/-sub-?indo?$/i, '').replace(/-/g, ' ')
+          String(animeId || '').replace(/-sub-?indo?$/i, '').replace(/-/g, ' ')
         );
 
         // 2) Detail anime (cache) + rekomendasi + Jikan berjalan parallel
@@ -231,16 +232,18 @@ const Watch = () => {
 
           // data.episodes / data.episode_list sudah di-normalisasi oleh adapter.
           // API mengembalikan list TERBALIK (episode terbaru dulu) → sort ascending.
-          const epList = data.episodes || data.episode_list || [];
+          const epList = Array.isArray(data.episodes) ? data.episodes : Array.isArray(data.episode_list) ? data.episode_list : [];
           const normalizedEps = epList
+            .filter(Boolean)
             .map((ep, i) => {
-              const s = ep.eps_slug || ep.slug || ep.id || '';
+              const s = String(ep.eps_slug || ep.slug || ep.id || '');
+              const epTitle = String(ep.eps_title || '');
               const num =
                 (ep.eps != null ? String(ep.eps) : null) ||
-                ep.eps_title?.match(/episode\s*(\d+)/i)?.[1] ||
+                epTitle.match(/episode\s*(\d+)/i)?.[1] ||
                 s.match(/-episode-(\d+)(?:-[a-z0-9-]*)?$/i)?.[1] ||
                 String(i + 1);
-              return { id: s, slug: s, index: parseInt(num) || (i + 1), title: ep.eps_title || '' };
+              return { id: s, slug: s, index: parseInt(num, 10) || (i + 1), title: epTitle };
             })
             .sort((a, b) => a.index - b.index);
           setEpisodes(normalizedEps);

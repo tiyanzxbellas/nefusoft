@@ -37,7 +37,17 @@ const ScheduleSkeleton = () => (
 const ScheduleCard = ({ a, onClick, index }) => {
   const [ep, setEp] = useState(null);
   const [isVisible, setIsVisible] = useState(false);
-  const timeText = a.key_time ? a.key_time.split(' ')[1].substring(0, 5) : "--:--";
+
+  const getTimeText = (timeVal) => {
+    if (!timeVal || typeof timeVal !== 'string') return '--:--';
+    if (timeVal.includes(' ')) {
+      const part = timeVal.split(' ')[1];
+      return part ? part.substring(0, 5) : timeVal.substring(0, 5);
+    }
+    return timeVal.substring(0, 5) || '--:--';
+  };
+
+  const timeText = getTimeText(a?.key_time || a?.time);
   const getProxyUrl = (url) => url ? `https://cf.tiyanstores.workers.dev/?url=${encodeURIComponent(url)}` : '';
 
   useEffect(() => {
@@ -46,19 +56,27 @@ const ScheduleCard = ({ a, onClick, index }) => {
   }, [index]);
 
   useEffect(() => {
+    if (!a?.id) return;
     let mounted = true;
     // Pakai adapter API baru
     fetchAnime(a.id)
       .then((d) => {
         if (!mounted || !d) return;
-        const firstEp = (d.episode_list || d.episodes ||[])[0];
+        const list = Array.isArray(d.episode_list) ? d.episode_list : Array.isArray(d.episodes) ? d.episodes : [];
+        const firstEp = list[0];
         if (firstEp) {
           setEp(firstEp.eps || firstEp.index || (firstEp.eps_title || '').match(/(\d+)$/)?.[1] || null);
         }
       })
       .catch(() => null);
     return () => { mounted = false; };
-  },[a.id]);
+  }, [a?.id]);
+
+  const genreText = typeof a?.genre === 'string'
+    ? a.genre.replace(/,/g, ', ')
+    : Array.isArray(a?.genres)
+      ? a.genres.join(', ')
+      : '-';
 
   return (
     <div className={`flex items-stretch gap-4 md:gap-6 relative group w-full mb-4 transition-all duration-700 ease-out ${isVisible ? 'opacity-100 blur-none translate-y-0' : 'opacity-0 blur-xl translate-y-8'}`}>
@@ -71,26 +89,26 @@ const ScheduleCard = ({ a, onClick, index }) => {
       </div>
       <div className="flex-1 py-4 w-full min-w-0">
         <div onClick={onClick} className="relative rounded-xl flex p-3 md:p-4 gap-4 md:gap-5 cursor-pointer transition-all active:scale-[0.98] bg-[#16161a] border border-white/5 hover:border-[#F6CF80]/30 group/card overflow-hidden shadow-xl">
-          <img src={getProxyUrl(a.image_poster)} referrerPolicy="no-referrer" className="w-20 md:w-24 aspect-[3/4] object-cover rounded-md shadow-2xl shrink-0 group-hover/card:scale-105 transition-transform duration-500 relative z-10" />
+          <img src={getProxyUrl(a?.image_poster)} referrerPolicy="no-referrer" className="w-20 md:w-24 aspect-[3/4] object-cover rounded-md shadow-2xl shrink-0 group-hover/card:scale-105 transition-transform duration-500 relative z-10" alt={a?.title || ''} />
           <div className="flex flex-col flex-1 min-w-0 overflow-hidden relative z-10">
             <div className="mb-2">
               <span className="bg-[#F6CF80] text-black text-[9px] font-black px-2 py-0.5 rounded-sm uppercase tracking-wider">
                 {ep ? `Episode Terakhir : ${ep}` : 'Menunggu Update'}
               </span>
             </div>
-            <h3 className="font-bold text-sm md:text-base text-white line-clamp-2 mb-2 group-hover/card:text-[#F6CF80] transition-colors">{a.title}</h3>
+            <h3 className="font-bold text-sm md:text-base text-white line-clamp-2 mb-2 group-hover/card:text-[#F6CF80] transition-colors">{a?.title}</h3>
             <div className="flex flex-col gap-1.5 text-[10px] md:text-xs text-white/60">
               <div className="flex items-start gap-2">
                 <span className="w-16 md:w-20 shrink-0 font-bold text-white/40 uppercase tracking-widest text-[9px] md:text-[10px]">Genre</span>
-                <span className="flex-1 text-white/80 font-medium line-clamp-1">{a.genre ? a.genre.replace(/,/g, ', ') : '-'}</span>
+                <span className="flex-1 text-white/80 font-medium line-clamp-1">{genreText}</span>
               </div>
               <div className="flex items-start gap-2">
                 <span className="w-16 md:w-20 shrink-0 font-bold text-white/40 uppercase tracking-widest text-[9px] md:text-[10px]">Aired</span>
-                <span className="flex-1 text-white/80 font-medium">{a.aired_start || '-'}</span>
+                <span className="flex-1 text-white/80 font-medium">{a?.aired_start || '-'}</span>
               </div>
               <div className="flex items-start gap-2">
                 <span className="w-16 md:w-20 shrink-0 font-bold text-white/40 uppercase tracking-widest text-[9px] md:text-[10px]">Time</span>
-                <span className="flex-1 text-[#F6CF80] font-bold">{a.time || '-'}</span>
+                <span className="flex-1 text-[#F6CF80] font-bold">{a?.time || '-'}</span>
               </div>
             </div>
           </div>
@@ -102,11 +120,11 @@ const ScheduleCard = ({ a, onClick, index }) => {
 
 const Schedule = () => {
   const navigate = useNavigate();
-  const[schedule, setSchedule] = useState(window.__NEFUSOFT_CACHE__?.schedule || {});
-  const[isLoading, setIsLoading] = useState(!window.__NEFUSOFT_CACHE__?.schedule);
+  const [schedule, setSchedule] = useState(window.__NEFUSOFT_CACHE__?.schedule || {});
+  const [isLoading, setIsLoading] = useState(!window.__NEFUSOFT_CACHE__?.schedule);
   
-  const dayNames =["Min", "Sen", "Sel", "Rab", "Kam", "Jum", "Sab"];
-  const dayKeys =["MINGGU", "SENIN", "SELASA", "RABU", "KAMIS", "JUMAT", "SABTU"];
+  const dayNames = ["Min", "Sen", "Sel", "Rab", "Kam", "Jum", "Sab"];
+  const dayKeys = ["MINGGU", "SENIN", "SELASA", "RABU", "KAMIS", "JUMAT", "SABTU"];
   
   const [weekDates, setWeekDates] = useState([]);
   const [selectedDay, setSelectedDay] = useState("");
@@ -151,9 +169,9 @@ const Schedule = () => {
     };
     runFetch();
     return () => { isMounted = false; };
-  },[]);
+  }, []);
 
-  const getAnimeList = () => schedule[selectedDay] ||[];
+  const getAnimeList = () => (Array.isArray(schedule?.[selectedDay]) ? schedule[selectedDay] : []);
 
   return (
     <div className="min-h-screen bg-[#0a0a0c] selection:bg-[#F6CF80] selection:text-black pb-24">
@@ -183,10 +201,10 @@ const Schedule = () => {
           {isLoading ? <ScheduleSkeleton /> : (
             getAnimeList().length > 0 ? getAnimeList().map((a, index) => (
               <ScheduleCard 
-                key={`${a.id}-${index}`} 
+                key={`${a?.id || index}-${index}`} 
                 a={a} 
                 index={index}
-                onClick={() => navigate(`/anime/${a.id}`, { state: { anime: a, latestEp: true } })}
+                onClick={() => navigate(`/anime/${a?.id}`, { state: { anime: a, latestEp: true } })}
               />
             )) : (
               <div className="py-20 flex flex-col items-center justify-center text-center">

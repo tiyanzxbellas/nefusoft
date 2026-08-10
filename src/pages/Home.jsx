@@ -46,9 +46,18 @@ const setCachedData = (key, data) => {
 const Home = () => {
   const navigate = useNavigate();
   const localCache = getCachedData('nefusoft_home_cache');
-  const [schedule, setSchedule] = useState(window.__NEFUSOFT_CACHE__?.schedule || localCache?.schedule || {});
-  const [ongoing, setOngoing] = useState(window.__NEFUSOFT_CACHE__?.ongoing || localCache?.ongoing || []);
-  const [popular, setPopular] = useState(window.__NEFUSOFT_CACHE__?.popular || localCache?.popular || []);
+  const [schedule, setSchedule] = useState(() => {
+    const c = window.__NEFUSOFT_CACHE__?.schedule || localCache?.schedule;
+    return (c && typeof c === 'object' && !Array.isArray(c)) ? c : {};
+  });
+  const [ongoing, setOngoing] = useState(() => {
+    const c = window.__NEFUSOFT_CACHE__?.ongoing || localCache?.ongoing;
+    return Array.isArray(c) ? c : [];
+  });
+  const [popular, setPopular] = useState(() => {
+    const c = window.__NEFUSOFT_CACHE__?.popular || localCache?.popular;
+    return Array.isArray(c) ? c : [];
+  });
   const [heroIndex, setHeroIndex] = useState(0);
   const [isTransitioning, setIsTransitioning] = useState(true);
   const [isLoading, setIsLoading] = useState(!window.__NEFUSOFT_CACHE__ && !localCache);
@@ -61,6 +70,7 @@ const Home = () => {
   const todayScrollRef = useRef(null);
 
   const shuffleArray = (array) => {
+    if (!Array.isArray(array)) return [];
     const newArr = [...array];
     for (let i = newArr.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
@@ -88,19 +98,22 @@ const Home = () => {
       try {
         // Pakai helper adapter (auto-normalisasi ke shape lama)
         const [schData, ongData, popData] = await Promise.all([
-          fetchSchedule(),
-          fetchOngoing(1),
-          fetchPopular(1),
+          fetchSchedule().catch(() => ({})),
+          fetchOngoing(1).catch(() => []),
+          fetchPopular(1).catch(() => []),
         ]);
         if (!isMounted) return;
 
-        const shuffledOngoing = shuffleArray(ongData);
+        const safeSch = schData && typeof schData === 'object' ? schData : {};
+        const safeOng = Array.isArray(ongData) ? ongData : [];
+        const safePop = Array.isArray(popData) ? popData : [];
+        const shuffledOngoing = shuffleArray(safeOng);
 
-        setSchedule(schData);
+        setSchedule(safeSch);
         setOngoing(shuffledOngoing);
-        setPopular(popData);
-        window.__NEFUSOFT_CACHE__ = { schedule: schData, ongoing: shuffledOngoing, popular: popData };
-        setCachedData('nefusoft_home_cache', { schedule: schData, ongoing: shuffledOngoing, popular: popData });
+        setPopular(safePop);
+        window.__NEFUSOFT_CACHE__ = { schedule: safeSch, ongoing: shuffledOngoing, popular: safePop };
+        setCachedData('nefusoft_home_cache', { schedule: safeSch, ongoing: shuffledOngoing, popular: safePop });
       } catch (e) {
         console.error('Home fetch failed', e);
       } finally {
@@ -116,7 +129,8 @@ const Home = () => {
 
   const days = ["MINGGU", "SENIN", "SELASA", "RABU", "KAMIS", "JUMAT", "SABTU"];
   // Schedule API baru = semua anime ongoing (per hari). Tinggal ambil by day.
-  const todayAnime = schedule[days[new Date().getDay()]] || [];
+  const todayRaw = (schedule && typeof schedule === 'object') ? schedule[days[new Date().getDay()]] : [];
+  const todayAnime = Array.isArray(todayRaw) ? todayRaw.filter(Boolean) : [];
   const carouselItems = todayAnime.length > 0 ? [...todayAnime, todayAnime[0]] : [];
 
   useEffect(() => {
@@ -222,7 +236,7 @@ const Home = () => {
             {carouselItems.map((a, i) => (
               <div key={i} className="min-w-full h-full relative">
                 <img
-                  src={getProxyUrl(a.image_cover || a.image_poster)}
+                  src={getProxyUrl(a?.image_cover || a?.image_poster)}
                   referrerPolicy="no-referrer"
                   className="w-full h-full object-cover opacity-60"
                   fetchPriority={i === 0 ? "high" : "low"}
@@ -232,7 +246,7 @@ const Home = () => {
                 <div className="absolute inset-0 bg-gradient-to-t from-[#0a0a0c] via-[#0a0a0c]/40 to-transparent"></div>
                 <div className="absolute bottom-6 left-6 md:bottom-12 md:left-12 flex items-end gap-4 md:gap-6 z-10 w-[calc(100%-48px)] md:w-[calc(100%-96px)] max-w-7xl mx-auto pr-8 md:pr-0">
                   <img
-                    src={getProxyUrl(a.image_poster || a.image_cover)}
+                    src={getProxyUrl(a?.image_poster || a?.image_cover)}
                     referrerPolicy="no-referrer"
                     className="w-24 md:w-40 aspect-[3/4.2] object-cover rounded-md shadow-2xl shrink-0"
                     fetchPriority={i === 0 ? "high" : "low"}
@@ -240,10 +254,10 @@ const Home = () => {
                     decoding={i === 0 ? "sync" : "async"}
                   />
                   <div className="flex flex-col text-left mb-1 md:mb-2 gap-1 md:gap-1.5 flex-1 min-w-0">
-                    <h2 className="text-lg md:text-3xl font-black text-white tracking-tight leading-tight line-clamp-2">{a.title}</h2>
-                    <p className="text-[10px] md:text-xs text-white/50 line-clamp-2 max-w-2xl leading-relaxed">{a.synopsis}</p>
+                    <h2 className="text-lg md:text-3xl font-black text-white tracking-tight leading-tight line-clamp-2">{a?.title}</h2>
+                    <p className="text-[10px] md:text-xs text-white/50 line-clamp-2 max-w-2xl leading-relaxed">{a?.synopsis}</p>
                     <div className="flex items-center gap-2 mt-1 md:mt-2">
-                      <button onClick={() => navigate(`/anime/${a.id}`, { state: { anime: a } })} className="h-8 md:h-10 px-5 md:px-6 bg-[#F6CF80] hover:bg-[#ebd59b] text-black rounded font-black tracking-wider text-[10px] md:text-xs flex items-center justify-center gap-1.5 shrink-0 transition-colors">
+                      <button onClick={() => navigate(`/anime/${a?.id}`, { state: { anime: a } })} className="h-8 md:h-10 px-5 md:px-6 bg-[#F6CF80] hover:bg-[#ebd59b] text-black rounded font-black tracking-wider text-[10px] md:text-xs flex items-center justify-center gap-1.5 shrink-0 transition-colors">
                         <svg className="w-3.5 h-3.5 md:w-4 md:h-4 fill-current" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
                         <span className="leading-none pt-[1px] md:pt-[2px]">Tonton</span>
                       </button>
@@ -315,11 +329,11 @@ const Home = () => {
         </div>
         <div ref={ongoingScrollRef} className="flex overflow-x-auto gap-3 pb-4 custom-scrollbar snap-x px-2">
           {isLoading ? [...Array(8)].map((_, i) => <CardSkeleton key={i} />) : 
-            ongoing.map((a, i) => (
-              <div key={a.id || i} ref={el => ongoingCardRefs.current[i] = el} onClick={() => navigate(`/anime/${a.id}`, { state: { anime: a } })} className="min-w-[105px] w-[105px] group cursor-pointer snap-start transition-all duration-700 opacity-0 blur-xl translate-y-4 active:scale-95 flex flex-col gap-2">
+            (Array.isArray(ongoing) ? ongoing : []).map((a, i) => (
+              <div key={a?.id || i} ref={el => ongoingCardRefs.current[i] = el} onClick={() => navigate(`/anime/${a?.id}`, { state: { anime: a } })} className="min-w-[105px] w-[105px] group cursor-pointer snap-start transition-all duration-700 opacity-0 blur-xl translate-y-4 active:scale-95 flex flex-col gap-2">
                 <div className="relative aspect-[3/4.5] overflow-hidden bg-[#16161a] rounded-sm shadow-xl">
                   <img
-                    src={getProxyUrl(a.image_poster)}
+                    src={getProxyUrl(a?.image_poster)}
                     referrerPolicy="no-referrer"
                     className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
                     fetchPriority={i < 3 ? "high" : "low"}
@@ -327,7 +341,7 @@ const Home = () => {
                     decoding={i < 3 ? "sync" : "async"}
                   />
                 </div>
-                <h3 className="text-[9px] font-bold text-white/60 line-clamp-1 capitalize group-hover:text-[#F6CF80] transition-colors">{a.title.toLowerCase()}</h3>
+                <h3 className="text-[9px] font-bold text-white/60 line-clamp-1 capitalize group-hover:text-[#F6CF80] transition-colors">{a?.title ? a.title.toLowerCase() : ''}</h3>
               </div>
             ))
           }
@@ -350,11 +364,11 @@ const Home = () => {
         </div>
         <div ref={todayScrollRef} className="flex overflow-x-auto gap-3 pb-4 custom-scrollbar snap-x px-2">
           {isLoading ? [...Array(8)].map((_, i) => <CardSkeleton key={i} />) :
-            todayAnime.map((a, i) => (
-              <div key={a.id || i} ref={el => todayCardRefs.current[i] = el} onClick={() => navigate(`/anime/${a.id}`, { state: { anime: a } })} className="min-w-[105px] w-[105px] group cursor-pointer snap-start transition-all duration-700 opacity-0 blur-xl translate-y-4 active:scale-95 flex flex-col gap-2">
+            (Array.isArray(todayAnime) ? todayAnime : []).map((a, i) => (
+              <div key={a?.id || i} ref={el => todayCardRefs.current[i] = el} onClick={() => navigate(`/anime/${a?.id}`, { state: { anime: a } })} className="min-w-[105px] w-[105px] group cursor-pointer snap-start transition-all duration-700 opacity-0 blur-xl translate-y-4 active:scale-95 flex flex-col gap-2">
                 <div className="relative aspect-[3/4.5] overflow-hidden bg-[#16161a] rounded-sm shadow-xl">
                   <img
-                    src={getProxyUrl(a.image_poster)}
+                    src={getProxyUrl(a?.image_poster)}
                     referrerPolicy="no-referrer"
                     className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
                     fetchPriority={i < 3 ? "high" : "low"}
@@ -362,7 +376,7 @@ const Home = () => {
                     decoding={i < 3 ? "sync" : "async"}
                   />
                 </div>
-                <h3 className="text-[9px] font-bold text-white/60 line-clamp-1 capitalize group-hover:text-[#F6CF80] transition-colors">{a.title.toLowerCase()}</h3>
+                <h3 className="text-[9px] font-bold text-white/60 line-clamp-1 capitalize group-hover:text-[#F6CF80] transition-colors">{a?.title ? a.title.toLowerCase() : ''}</h3>
               </div>
             ))
           }
@@ -376,12 +390,12 @@ const Home = () => {
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 px-2">
           {isLoading ? [...Array(10)].map((_, i) => <div key={i} className="h-24 bg-[#16161a] rounded-xl relative overflow-hidden"><Shimmer /></div>) :
-            popular.slice(0, 10).map((anime, index) => (
-              <div key={anime.id} ref={el => popularCardRefs.current[index] = el} onClick={() => navigate(`/anime/${anime.id}`, { state: { anime: anime } })} className={`group cursor-pointer relative h-24 md:h-28 rounded-2xl flex items-center px-5 overflow-hidden transition-all duration-700 opacity-0 blur-xl translate-y-4 active:scale-95 shadow-lg ${index < 3 ? 'bg-gradient-to-r from-[#F6CF80]/20 via-[#16161a] to-[#16161a] border border-[#F6CF80]/20' : 'bg-[#16161a] border border-white/5 hover:border-white/20'}`}>
+            (Array.isArray(popular) ? popular : []).slice(0, 10).map((anime, index) => (
+              <div key={anime?.id || index} ref={el => popularCardRefs.current[index] = el} onClick={() => navigate(`/anime/${anime?.id}`, { state: { anime: anime } })} className={`group cursor-pointer relative h-24 md:h-28 rounded-2xl flex items-center px-5 overflow-hidden transition-all duration-700 opacity-0 blur-xl translate-y-4 active:scale-95 shadow-lg ${index < 3 ? 'bg-gradient-to-r from-[#F6CF80]/20 via-[#16161a] to-[#16161a] border border-[#F6CF80]/20' : 'bg-[#16161a] border border-white/5 hover:border-white/20'}`}>
                 <div className="absolute right-0 top-0 bottom-0 w-1/2 md:w-1/3 z-0">
                   <div className="absolute inset-0 bg-gradient-to-r from-[#16161a] via-[#16161a]/80 to-transparent z-10"></div>
                   <img
-                    src={getProxyUrl(anime.image_cover)}
+                    src={getProxyUrl(anime?.image_cover || anime?.image_poster)}
                     referrerPolicy="no-referrer"
                     className="w-full h-full object-cover opacity-60 group-hover:opacity-100 transition-opacity"
                     loading="lazy"
@@ -391,7 +405,7 @@ const Home = () => {
                 <div className="relative z-20 flex items-center gap-5 w-full">
                   <div className={`w-10 h-10 md:w-12 md:h-12 rounded-full flex items-center justify-center font-black text-sm md:text-base shrink-0 shadow-lg ${index < 3 ? 'bg-[#F6CF80] text-[#0a0a0c]' : 'text-white/30 border border-white/10 bg-white/5'}`}>{index + 1}</div>
                   <div className="flex flex-col">
-                    <h3 className="text-white font-bold text-sm md:text-base line-clamp-1 group-hover:text-[#F6CF80] transition-colors">{anime.title}</h3>
+                    <h3 className="text-white font-bold text-sm md:text-base line-clamp-1 group-hover:text-[#F6CF80] transition-colors">{anime?.title}</h3>
                   </div>
                 </div>
               </div>

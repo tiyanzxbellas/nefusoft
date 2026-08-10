@@ -25,18 +25,21 @@ const History = () => {
 
   useEffect(() => {
     // Check if user is logged in
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setIsLoggedIn(!!session?.user);
+    supabase.auth.getSession().then(({ data }) => {
+      setIsLoggedIn(!!data?.session?.user);
+      loadHistory();
+    }).catch(() => {
       loadHistory();
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data } = supabase.auth.onAuthStateChange((_event, session) => {
       setIsLoggedIn(!!session?.user);
       loadHistory();
     });
+    const subscription = data?.subscription;
 
     return () => {
-      subscription.unsubscribe();
+      subscription?.unsubscribe?.();
     };
   }, []);
 

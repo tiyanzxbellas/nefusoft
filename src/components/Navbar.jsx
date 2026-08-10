@@ -56,31 +56,47 @@ const Navbar = () => {
   const dropdownRef = useRef(null);
 
   const [searchHistory, setSearchHistory] = useState(() => {
-    try { const stored = localStorage.getItem('nefusoft_search_history'); return stored ? JSON.parse(stored) : []; }
-    catch (e) { return []; }
+    try {
+      const stored = localStorage.getItem('nefusoft_search_history');
+      const parsed = stored ? JSON.parse(stored) : [];
+      return Array.isArray(parsed) ? parsed.filter(i => typeof i === 'string') : [];
+    } catch (e) {
+      return [];
+    }
   });
   const [isInputFocused, setIsInputFocused] = useState(false);
 
   const addSearchTerm = (term) => {
-    if (!term || !term.trim()) return;
+    if (!term || typeof term !== 'string' || !term.trim()) return;
     const trimmed = term.trim();
     setSearchHistory(prev => {
-      const filtered = prev.filter(item => item.toLowerCase() !== trimmed.toLowerCase());
+      const prevArr = Array.isArray(prev) ? prev : [];
+      const filtered = prevArr.filter(item => typeof item === 'string' && item.toLowerCase() !== trimmed.toLowerCase());
       const updated = [trimmed, ...filtered].slice(0, 10);
-      localStorage.setItem('nefusoft_search_history', JSON.stringify(updated));
+      try {
+        localStorage.setItem('nefusoft_search_history', JSON.stringify(updated));
+      } catch (e) {}
       return updated;
     });
   };
 
   const deleteHistoryItem = (term) => {
     setSearchHistory(prev => {
-      const updated = prev.filter(item => item !== term);
-      localStorage.setItem('nefusoft_search_history', JSON.stringify(updated));
+      const prevArr = Array.isArray(prev) ? prev : [];
+      const updated = prevArr.filter(item => item !== term);
+      try {
+        localStorage.setItem('nefusoft_search_history', JSON.stringify(updated));
+      } catch (e) {}
       return updated;
     });
   };
 
-  const clearAllHistory = () => { setSearchHistory([]); localStorage.removeItem('nefusoft_search_history'); };
+  const clearAllHistory = () => {
+    setSearchHistory([]);
+    try {
+      localStorage.removeItem('nefusoft_search_history');
+    } catch (e) {}
+  };
 
   const [profile, setProfile] = useState(null);
   const [showProfileModal, setShowProfileModal] = useState(false);
@@ -297,7 +313,10 @@ const Navbar = () => {
         {isSearchOpen && (isInputFocused || searchQuery) && (
           <div className="absolute top-20 left-4 right-4 md:left-auto md:right-0 md:w-96 bg-[#16161a] border border-white/10 rounded-2xl shadow-2xl z-[110] max-h-[60vh] overflow-y-auto custom-scrollbar origin-top animate-[slideDown_0.2s_ease-out]">
             {(() => {
-              const filteredHistory = searchQuery.trim() ? searchHistory.filter(item => item.toLowerCase().includes(searchQuery.toLowerCase())) : searchHistory;
+              const historyArr = Array.isArray(searchHistory) ? searchHistory : [];
+              const filteredHistory = searchQuery.trim()
+                ? historyArr.filter(item => typeof item === 'string' && item.toLowerCase().includes(searchQuery.toLowerCase()))
+                : historyArr;
               if (filteredHistory.length === 0) return null;
               return (
                 <div className="flex flex-col border-b border-white/5 pb-2">
@@ -323,10 +342,10 @@ const Navbar = () => {
               <div className="flex flex-col">
                 <div className="px-4 pt-3 pb-1 text-[10px] font-black uppercase tracking-wider text-white/50">Hasil Anime</div>
                 {isLiveLoading ? <div className="p-6 text-center text-[#F6CF80] text-xs font-bold animate-pulse">mencari...</div>
-                : liveResults.length > 0 ? liveResults.map(r => (
-                  <div key={r.slug || r.id} onClick={() => { addSearchTerm(r.title); navigate(`/anime/${r.slug || r.id}`, { state: { anime: r } }); setIsSearchOpen(false); }} className="flex items-center gap-4 p-3 hover:bg-white/5 cursor-pointer border-b border-white/5 last:border-b-0 transition-colors">
-                    <img src={getProxyUrl(r.poster || r.image_poster)} referrerPolicy="no-referrer" className="w-10 aspect-[3/4.5] object-cover rounded-md shadow-md" />
-                    <div className="flex flex-col"><span className="text-white font-bold text-xs line-clamp-1">{r.title}</span><span className="text-white/40 font-bold text-[9px] mt-1">{r.type || r.status || ""}</span></div>
+                : Array.isArray(liveResults) && liveResults.length > 0 ? liveResults.map((r, idx) => (
+                  <div key={r?.slug || r?.id || idx} onClick={() => { if (r?.title) addSearchTerm(r.title); navigate(`/anime/${r?.slug || r?.id}`, { state: { anime: r } }); setIsSearchOpen(false); }} className="flex items-center gap-4 p-3 hover:bg-white/5 cursor-pointer border-b border-white/5 last:border-b-0 transition-colors">
+                    <img src={getProxyUrl(r?.poster || r?.image_poster)} referrerPolicy="no-referrer" className="w-10 aspect-[3/4.5] object-cover rounded-md shadow-md" alt={r?.title || ''} />
+                    <div className="flex flex-col"><span className="text-white font-bold text-xs line-clamp-1">{r?.title}</span><span className="text-white/40 font-bold text-[9px] mt-1">{r?.type || r?.status || ""}</span></div>
                   </div>
                 )) : <div className="p-6 text-center text-white/40 text-xs font-bold">anime tidak ditemukan</div>}
               </div>
