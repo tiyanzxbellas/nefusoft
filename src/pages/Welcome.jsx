@@ -47,27 +47,31 @@ const Welcome = () => {
 
           // Pakai helper adapter API baru
           const [schData, ongData, popData] = await Promise.all([
-            fetchSchedule(),
-            fetchOngoing(1),
-            fetchPopular(1),
+            fetchSchedule().catch(() => ({})),
+            fetchOngoing(1).catch(() => []),
+            fetchPopular(1).catch(() => []),
           ]);
 
-          const shuffledOngoing = shuffleArray(ongData);
+          const safeSch = schData && typeof schData === 'object' ? schData : {};
+          const safeOng = Array.isArray(ongData) ? ongData : [];
+          const safePop = Array.isArray(popData) ? popData : [];
+          const shuffledOngoing = shuffleArray(safeOng);
 
-          compiled = { schedule: schData, ongoing: shuffledOngoing, popular: popData };
+          compiled = { schedule: safeSch, ongoing: shuffledOngoing, popular: safePop };
           window.__NEFUSOFT_CACHE__ = compiled;
           localStorage.setItem(cacheKey, JSON.stringify(compiled));
         }
 
         // Preload first anime cover and poster of Home Page's Carousel to achieve 0ms LCP on navigation
-        if (compiled && compiled.schedule) {
+        if (compiled && compiled.schedule && typeof compiled.schedule === 'object') {
           const days = ["MINGGU", "SENIN", "SELASA", "RABU", "KAMIS", "JUMAT", "SABTU"];
           // API baru: schedule tidak punya field "status" — semua dianggap ONGOING
-          const todayAnime = compiled.schedule[days[new Date().getDay()]] || [];
+          const todayAnimeRaw = compiled.schedule[days[new Date().getDay()]] || [];
+          const todayAnime = Array.isArray(todayAnimeRaw) ? todayAnimeRaw.filter(Boolean) : [];
           if (todayAnime.length > 0) {
             const firstAnime = todayAnime[0];
-            const firstCover = firstAnime.image_cover || firstAnime.image_poster;
-            const firstPoster = firstAnime.image_poster || firstAnime.image_cover;
+            const firstCover = firstAnime?.image_cover || firstAnime?.image_poster;
+            const firstPoster = firstAnime?.image_poster || firstAnime?.image_cover;
 
             if (firstCover) {
               const img = new Image();
@@ -155,9 +159,9 @@ const Welcome = () => {
                   {(() => {
                     const getProxyUrl = (url) => url ? `https://cf.tiyanstores.workers.dev/?url=${encodeURIComponent(url)}` : '';
                     return liveResults.map(r => (
-                      <div key={r.id} onClick={() => navigate(`/anime/${r.id}-${(r.title||'').toLowerCase().replace(/[^a-z0-9]+/g, '-')}`, { state: { anime: r } })} className="flex items-center gap-4 p-3 hover:bg-gray-100 border-b border-gray-100 cursor-pointer text-left transition-colors">
-                        <img src={getProxyUrl(r.image_poster)} referrerPolicy="no-referrer" alt={r.title} width="40" height="55" loading="lazy" decoding="async" className="w-10 rounded-md shadow-sm" />
-                        <div className="flex flex-col"><span className="text-black font-black text-xs line-clamp-1">{r.title}</span><span className="text-gray-500 font-bold text-[9px] uppercase mt-1 tracking-wider">{r.type} • {r.status}</span></div>
+                      <div key={r?.id || r?.slug} onClick={() => navigate(`/anime/${r?.slug || r?.id}`, { state: { anime: r } })} className="flex items-center gap-4 p-3 hover:bg-gray-100 border-b border-gray-100 cursor-pointer text-left transition-colors">
+                        <img src={getProxyUrl(r?.image_poster)} referrerPolicy="no-referrer" alt={r?.title || ''} width="40" height="55" loading="lazy" decoding="async" className="w-10 rounded-md shadow-sm" />
+                        <div className="flex flex-col"><span className="text-black font-black text-xs line-clamp-1">{r?.title}</span><span className="text-gray-500 font-bold text-[9px] uppercase mt-1 tracking-wider">{r?.type} • {r?.status}</span></div>
                       </div>
                     ));
                   })()}

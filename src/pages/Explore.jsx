@@ -25,15 +25,16 @@ const AnimeCard = ({ a, onClick, index }) => {
     <div onClick={onClick} className={`w-full flex flex-col gap-2 group cursor-pointer active:scale-95 transition-all duration-700 ease-out ${isVisible ? 'opacity-100 blur-none translate-y-0' : 'opacity-0 blur-xl translate-y-4'}`}>
       <div className="relative aspect-[3/4.5] w-full overflow-hidden bg-[#16161a] rounded-sm shadow-xl">
         <img
-          src={getProxyUrl(a.image_poster)}
+          src={getProxyUrl(a?.image_poster)}
           referrerPolicy="no-referrer"
           className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
           fetchPriority={index < 4 ? "high" : "low"}
           loading={index < 4 ? "eager" : "lazy"}
           decoding={index < 4 ? "sync" : "async"}
+          alt={a?.title || ''}
         />
       </div>
-      <h3 className="text-[9px] font-bold text-white/60 line-clamp-1 capitalize group-hover:text-[#F6CF80] transition-colors">{a.title.toLowerCase()}</h3>
+      <h3 className="text-[9px] font-bold text-white/60 line-clamp-1 capitalize group-hover:text-[#F6CF80] transition-colors">{a?.title ? a.title.toLowerCase() : ''}</h3>
     </div>
   );
 };
@@ -215,8 +216,8 @@ const Explore = () => {
         )}
 
         <div className="grid grid-cols-[repeat(auto-fill,minmax(95px,1fr))] gap-3 px-2">
-          {isLoading ? [...Array(18)].map((_, i) => <CardSkeleton key={`shimmer-${i}`} />) : results.map((a, index) => (
-            <AnimeCard key={a.id} a={a} index={index} onClick={() => navigate(`/anime/${a.id}`)} />
+          {isLoading ? [...Array(18)].map((_, i) => <CardSkeleton key={`shimmer-${i}`} />) : (Array.isArray(results) ? results : []).map((a, index) => (
+            <AnimeCard key={a?.id || index} a={a} index={index} onClick={() => navigate(`/anime/${a?.id}`)} />
           ))}
         </div>
         

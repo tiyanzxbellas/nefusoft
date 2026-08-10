@@ -11,6 +11,7 @@ const AudioPlayer = ({ src }) => {
   const audioRef = useRef(null);
 
   useEffect(() => {
+    if (!src) return;
     const audio = new Audio(src);
     audioRef.current = audio;
 
@@ -138,17 +139,18 @@ const LiveChat = ({ animeId, episodeId = null }) => {
 
   useEffect(() => {
     // Get current session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null);
-    });
+    supabase.auth.getSession().then(({ data }) => {
+      setUser(data?.session?.user ?? null);
+    }).catch(() => {});
 
     // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data } = supabase.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user ?? null);
     });
+    const subscription = data?.subscription;
 
     return () => {
-      subscription.unsubscribe();
+      subscription?.unsubscribe?.();
       if (recordingIntervalRef.current) clearInterval(recordingIntervalRef.current);
     };
   }, []);
@@ -398,9 +400,9 @@ const LiveChat = ({ animeId, episodeId = null }) => {
   };
 
   // Group root comments and replies
-  const rootComments = messages.filter(msg => !msg.parent_id);
-  const repliesMap = messages.reduce((acc, msg) => {
-    if (msg.parent_id) {
+  const rootComments = (Array.isArray(messages) ? messages : []).filter(msg => msg && !msg.parent_id);
+  const repliesMap = (Array.isArray(messages) ? messages : []).reduce((acc, msg) => {
+    if (msg && msg.parent_id) {
       if (!acc[msg.parent_id]) {
         acc[msg.parent_id] = [];
       }

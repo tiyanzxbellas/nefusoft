@@ -1,18 +1,19 @@
-import React, { Suspense, lazy } from 'react';
+import React, { Suspense } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { lazyWithRetry } from './utils/lazyWithRetry';
 
 import Welcome from './pages/Welcome';
 
-const FloatingLiveChat = lazy(() => import('./components/FloatingLiveChat'));
-const Home = lazy(() => import('./pages/Home'));
-const Explore = lazy(() => import('./pages/Explore'));
-const Ongoing = lazy(() => import('./pages/Ongoing'));
-const Schedule = lazy(() => import('./pages/Schedule'));
-const Watch = lazy(() => import('./pages/Watch'));
-const History = lazy(() => import('./pages/History'));
-const Favorites = lazy(() => import('./pages/Favorites'));
-const Manga = lazy(() => import('./pages/Manga'));
-const Donghua = lazy(() => import('./pages/Donghua'));
+const FloatingLiveChat = lazyWithRetry(() => import('./components/FloatingLiveChat'));
+const Home = lazyWithRetry(() => import('./pages/Home'));
+const Explore = lazyWithRetry(() => import('./pages/Explore'));
+const Ongoing = lazyWithRetry(() => import('./pages/Ongoing'));
+const Schedule = lazyWithRetry(() => import('./pages/Schedule'));
+const Watch = lazyWithRetry(() => import('./pages/Watch'));
+const History = lazyWithRetry(() => import('./pages/History'));
+const Favorites = lazyWithRetry(() => import('./pages/Favorites'));
+const Manga = lazyWithRetry(() => import('./pages/Manga'));
+const Donghua = lazyWithRetry(() => import('./pages/Donghua'));
 
 function AppContent() {
   const location = useLocation();

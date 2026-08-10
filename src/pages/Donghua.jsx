@@ -271,7 +271,7 @@ export default function Donghua() {
         if (schedData.length > 0) {
           const today = new Date().getDay();
           const daysIndo = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jum'at", "Sabtu"];
-          const matchDay = schedData.find(s => s.day?.toLowerCase().includes(daysIndo[today].toLowerCase()) || s.day?.toLowerCase().includes(daysEnglish[(today + 6) % 7].toLowerCase()));
+          const matchDay = schedData.find(s => (s?.day || '').toLowerCase().includes((daysIndo[today] || '').toLowerCase()) || (s?.day || '').toLowerCase().includes((daysEnglish[(today + 6) % 7] || '').toLowerCase()));
           nextActiveDay = matchDay ? matchDay.day : schedData[0].day;
           setActiveDay(nextActiveDay);
         }
@@ -317,7 +317,7 @@ export default function Donghua() {
       if (searchQuery.trim()) {
         url = `${API_BASE}/page/${page}/?s=${encodeURIComponent(searchQuery)}`;
       } else if (selectedGenre) {
-        const slug = genres.find(g => g.name.toLowerCase() === selectedGenre.toLowerCase())?.slug || selectedGenre.toLowerCase().replace(/\s+/g, '-');
+        const slug = (Array.isArray(genres) ? genres : []).find(g => (g?.name || '').toLowerCase() === (selectedGenre || '').toLowerCase())?.slug || (selectedGenre || '').toLowerCase().replace(/\s+/g, '-');
         url = `${API_BASE}/genres/${slug}/page/${page}/`;
       } else {
         if (selectedCategory === 'ongoing') {
@@ -576,8 +576,8 @@ export default function Donghua() {
   };
 
   // Filter episodes list
-  const filteredEpisodes = episodesList.filter(ep => {
-    return (ep.episode || '').toLowerCase().includes(episodeSearch.toLowerCase());
+  const filteredEpisodes = (Array.isArray(episodesList) ? episodesList : []).filter(ep => {
+    return (ep?.episode || '').toLowerCase().includes((episodeSearch || '').toLowerCase());
   });
 
   // Extract clean iframe source from dynamic strings
