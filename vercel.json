@@ -1,6 +1,10 @@
 {
   "rewrites": [
     {
+      "source": "/api/:path*",
+      "destination": "https://www.sankavollerei.web.id/anime/:path*"
+    },
+    {
       "source": "/(.*\\.mp4)",
       "has": [
         {

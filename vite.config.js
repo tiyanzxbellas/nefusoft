@@ -17,6 +17,7 @@ export default defineConfig({
         target: 'https://www.sankavollerei.web.id',
         changeOrigin: true,
         secure: true,
+        rewrite: (path) => path.replace(/^\/api/, '/anime'),
       }
     }
   },

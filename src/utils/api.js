@@ -17,10 +17,15 @@
  * ----------------------------------------------------------------
  * Server API Sanka Vollerei TIDAK mengirim header CORS, jadi request
  * langsung dari browser (fetch ke origin lain) selalu diblokir.
- * Semua request di file ini dirutekan lewat CORS proxy chain:
- *   1. Worker Cloudflare milik project (sama seperti halaman Donghua)
- *   2. Fallback public proxies (corsproxy.io, allorigins, codetabs)
- *   3. Direct fetch (fallback terakhir)
+ *
+ * STRATEGI SAAT INI (lebih cepat):
+ *   1. Semua request API lewat path same-origin `/api` (VITE_API_BASE=/api).
+ *      Di production (Vercel) path ini di-proxy server-side oleh vercel.json
+ *      ke upstream; di dev diteruskan vite proxy. Karena same-origin, tidak
+ *      ada CORS block dan tidak bergantung pada CORS proxy pihak ketiga.
+ *   2. Kalau jalur same-origin tidak tersedia (host statis tanpa rewrite),
+ *      fallback otomatis ke CORS proxy chain (paralel, first-success wins):
+ *      Worker Cloudflare milik project → corsproxy.io → allorigins → codetabs.
  * Proxy utama bisa dioverride via env `VITE_CORS_PROXY`
  * (set ke "direct" untuk menonaktifkan proxy sepenuhnya).
  *
@@ -46,7 +51,11 @@
  * React bisa cancel request saat komponen unmount.
  */
 
-const API_BASE = import.meta.env.VITE_API_BASE || 'https://www.sankavollerei.web.id/anime';
+const API_BASE = import.meta.env.VITE_API_BASE || '/api';
+
+// Upstream API asli (dipakai untuk fallback CORS-proxy kalau jalur same-origin gagal,
+// misal di host statis yang tidak punya rewrite/proxy /api).
+const UPSTREAM_API = 'https://www.sankavollerei.web.id/anime';
 
 // Cloudflare Worker yang dipakai untuk proxy gambar & mp4 (handle referer/CORS)
 const IMG_PROXY = 'https://cf.tiyanstores.workers.dev/?url=';
@@ -79,7 +88,7 @@ export const getApiUrl = (url) =>
   CORS_PROXIES.length ? `${CORS_PROXIES[0]}${encodeURIComponent(url)}` : url;
 
 // fetch dengan timeout supaya proxy yang hang cepat diloncati
-const fetchWithTimeout = async (url, { signal, timeoutMs = 15000 } = {}) => {
+const fetchWithTimeout = async (url, { signal, timeoutMs = 12000 } = {}) => {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(new DOMException('Timeout', 'TimeoutError')), timeoutMs);
   const onAbort = () => ctrl.abort(signal.reason);
@@ -98,26 +107,93 @@ const fetchWithTimeout = async (url, { signal, timeoutMs = 15000 } = {}) => {
   }
 };
 
+// =====================
+// Response cache (GET-like)
+// =====================
+// Navigasi berulang (mis. ganti episode, balik ke Home, buka lagi halaman yang
+// sama) tidak perlu nunggu round-trip proxy setiap kali. Data dinormalisasi
+// lalu di-cache singkat di memori (TTL 5 menit). Cukup kecil & cepat, aman
+// untuk data list/detail yang jarang berubah per-menit.
+const RESPONSE_TTL_MS = 5 * 60 * 1000; // 5 menit
+const responseCache = new Map();
+
+const getCachedResponse = (key) => {
+  const hit = responseCache.get(key);
+  if (!hit) return null;
+  if (Date.now() - hit.at < RESPONSE_TTL_MS) return hit.data;
+  responseCache.delete(key);
+  return null;
+};
+
+const setCachedResponse = (key, data) => {
+  try {
+    responseCache.set(key, { at: Date.now(), data });
+    // Jaga ukuran cache tetap wajar (FIFO sederhana)
+    if (responseCache.size > 300) {
+      const oldest = responseCache.keys().next().value;
+      if (oldest) responseCache.delete(oldest);
+    }
+  } catch (e) {}
+};
+
+// Bersihkan cache (dipanggil kalau UI butuh data segar).
+export const clearApiCache = () => responseCache.clear();
+
 // Helper low-level fetch dengan error handling yang konsisten.
-// Coba tiap CORS proxy secara berurutan; kalau semua gagal baru coba direct.
-const request = async (path, { signal } = {}) => {
+//
+// STRATEGI PENGAMBILAN (bikin loading jauh lebih cepat):
+// 1) Kalau VITE_API_BASE adalah path same-origin (`/api`), jalur INI dicoba
+//    lebih dulu. Di Vercel di-proxy server-side (vercel.json), di dev lewat
+//    vite proxy → karena same-origin TIDAK ada CORS block & tidak lewat proxy
+//    pihak ketiga yang lambat.
+// 2) SEMUA CORS proxy (termasuk direct upstream) dijalankan PARALEL dan
+//    response sukses pertama yang menang (Promise.any). Ini fallback biar app
+//    tetap jalan di host statis tanpa rewrite /api.
+//    Sebelumnya request berjalan SEKUENSIAL (proxy#1 timeout → proxy#2 timeout)
+//    yang bikin halaman nunggu puluhan detik saat proxy utama lambat/down.
+const request = async (path, { signal, skipCache = false } = {}) => {
   const target = path.startsWith('http') ? path : `${API_BASE}${path}`;
-  const urls = [...CORS_PROXIES.map((p) => `${p}${encodeURIComponent(target)}`), target];
+  const cacheKey = target;
+
+  if (!skipCache) {
+    const cached = getCachedResponse(cacheKey);
+    if (cached) return cached;
+  }
+
+  if (signal?.aborted) throw signal.reason ?? new DOMException('Aborted', 'AbortError');
+
+  // URL asli upstream — dipakai untuk fallback lewat CORS proxy.
+  const upstream = path.startsWith('http') ? path : `${UPSTREAM_API}${path}`;
+  const isSameOrigin = !path.startsWith('http') && API_BASE.startsWith('/');
+
+  const urls = isSameOrigin
+    ? [target, ...CORS_PROXIES.map((p) => `${p}${encodeURIComponent(upstream)}`), upstream]
+    : [...CORS_PROXIES.map((p) => `${p}${encodeURIComponent(upstream)}`), upstream];
+
+  const attempt = async (url) => {
+    if (signal?.aborted) throw signal.reason ?? new DOMException('Aborted', 'AbortError');
+    const res = await fetchWithTimeout(url, { signal });
+    if (!res.ok) throw new Error(`API ${res.status} ${res.statusText} (${url})`);
+    return await res.json();
+  };
 
   let lastErr = null;
-  for (const url of urls) {
-    if (signal?.aborted) throw signal.reason ?? new DOMException('Aborted', 'AbortError');
-    try {
-      const res = await fetchWithTimeout(url, { signal });
-      if (!res.ok) throw new Error(`API ${res.status} ${res.statusText} (${url})`);
-      return await res.json();
-    } catch (err) {
-      // Abort oleh caller (unmount/route change) → jangan retry, langsung lempar
-      if (signal?.aborted) throw err;
+  const attempts = urls.map((url) =>
+    attempt(url).catch((err) => {
       lastErr = err;
-    }
+      return Promise.reject(err);
+    })
+  );
+
+  try {
+    const data = await Promise.any(attempts);
+    if (!skipCache) setCachedResponse(cacheKey, data);
+    return data;
+  } catch (aggErr) {
+    // Abort oleh caller (unmount/route change) → lempar alasan aslinya
+    if (signal?.aborted) throw signal.reason ?? new DOMException('Aborted', 'AbortError');
+    throw lastErr ?? new Error(`Gagal fetch ${target}`);
   }
-  throw lastErr ?? new Error(`Gagal fetch ${target}`);
 };
 
 // =====================
