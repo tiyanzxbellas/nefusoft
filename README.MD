@@ -65,8 +65,9 @@ Ikuti langkah-langkah berikut untuk menjalankan NefuSoft di perangkat Anda:
    ```
    Lalu isi file `.env` dengan *endpoint API*:
    ```env
-   VITE_API_BASE=https://api.nefusoft.cloud/v1
+   VITE_API_BASE=https://www.sankavollerei.web.id/anime
    ```
+   > ℹ️ **Update API 2026:** NefuSoft sekarang menggunakan endpoint Sanka Vollerei terbaru (domain `.web.id` dengan struktur path baru). Adapter layer di `src/utils/api.js` sudah menerjemahkan otomatis dari path lama ke endpoint baru, jadi tidak ada perubahan kode yang dibutuhkan di sisi komponen.
 
 4. **Jalankan Development Server**
    ```bash

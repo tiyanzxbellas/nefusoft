@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { fetchSchedule, fetchOngoing, fetchPopular, fetchSearch } from '../utils/api';
 
 const Welcome = () => {
   const navigate = useNavigate();
@@ -44,15 +45,13 @@ const Welcome = () => {
             return newArr;
           };
 
-          const [schRes, ongRes, popRes] = await Promise.all([
-            fetch('/api/schedule').then(r => r.json()),
-            fetch('/anime/stream/latest').then(r => r.json()),
-            fetch('/anime/stream/popular').then(r => r.json())
+          // Pakai helper adapter API baru
+          const [schData, ongData, popData] = await Promise.all([
+            fetchSchedule(),
+            fetchOngoing(1),
+            fetchPopular(1),
           ]);
 
-          const schData = schRes.data || {};
-          const ongData = ongRes.data || [];
-          const popData = popRes.data || [];
           const shuffledOngoing = shuffleArray(ongData);
 
           compiled = { schedule: schData, ongoing: shuffledOngoing, popular: popData };
@@ -63,7 +62,8 @@ const Welcome = () => {
         // Preload first anime cover and poster of Home Page's Carousel to achieve 0ms LCP on navigation
         if (compiled && compiled.schedule) {
           const days = ["MINGGU", "SENIN", "SELASA", "RABU", "KAMIS", "JUMAT", "SABTU"];
-          const todayAnime = (compiled.schedule[days[new Date().getDay()]] || []).filter(a => a.status === "ONGOING");
+          // API baru: schedule tidak punya field "status" — semua dianggap ONGOING
+          const todayAnime = compiled.schedule[days[new Date().getDay()]] || [];
           if (todayAnime.length > 0) {
             const firstAnime = todayAnime[0];
             const firstCover = firstAnime.image_cover || firstAnime.image_poster;
@@ -99,10 +99,10 @@ const Welcome = () => {
     const timer = setTimeout(async () => {
       setIsLiveLoading(true);
       try {
-        const res = await fetch(`/anime/stream/search/${encodeURIComponent(searchQuery)}`).then(r => r.json());
-        if (isMounted) setLiveResults(res.data ||[]);
-      } catch (e) { 
-        if (isMounted) setLiveResults([]); 
+        const data = await fetchSearch(searchQuery);
+        if (isMounted) setLiveResults(data || []);
+      } catch (e) {
+        if (isMounted) setLiveResults([]);
       } finally {
         if (isMounted) setIsLiveLoading(false);
       }

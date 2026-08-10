@@ -4,6 +4,7 @@ import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
 import { saveHistoryItem, getHistory } from '../utils/historyManager';
 import { isFavorite, saveFavorite, removeFavorite } from '../utils/favoritesManager';
+import { fetchAnime, fetchEpisode, fetchServer, fetchPopular, fetchComplete } from '../utils/api';
 
 const ShimmerEffect = () => (
   <div className="absolute top-0 bottom-0 left-0 w-[150%] animate-[shimmer_1.5s_infinite] bg-gradient-to-r from-transparent via-white/5 to-transparent z-10" style={{ transform: 'translate3d(-100%, 0, 0) skewX(-20deg)' }} />
@@ -90,6 +91,7 @@ const Watch = () => {
   };
 
   const applyEpData = (epData, epSlug) => {
+    // epData dari adapter sudah dalam shape lama: { stream_links, download_links, next_slug, prev_slug }
     const streamList = epData.stream_links || epData.server || [];
     const dlList = epData.download_links || [];
     const svrs = streamList.map((s, i) => ({ id: s.server || String(i), server: s.server || 'Server ' + (i + 1), link: s.url || s.link || '' }));
@@ -100,6 +102,26 @@ const Watch = () => {
     setNextSlug(epData.next_slug || null);
     setPrevSlug(epData.prev_slug || null);
     setCurrentEpId(epSlug);
+  };
+
+  // Resolve serverId (kalau ada) ke URL embed sebenarnya
+  const resolveStreamLinks = async (epData) => {
+    if (!epData || !epData.stream_links) return epData;
+    const resolved = await Promise.all(
+      epData.stream_links.map(async (s) => {
+        if (s.url) return s; // sudah ada URL
+        if (s.serverId) {
+          try {
+            const realUrl = await fetchServer(s.serverId);
+            return { ...s, url: realUrl || '' };
+          } catch (e) {
+            return { ...s, url: '' };
+          }
+        }
+        return s;
+      })
+    );
+    return { ...epData, stream_links: resolved };
   };
 
   // Helper: ambil data Jikan dari hasil search, cari exact match dulu
@@ -141,17 +163,18 @@ const Watch = () => {
       setSelectedServer(null);
       try {
         // ✅ Semua fetch jalan parallel, Jikan ga nambah loading time
-        const [animeRes, popularRes, epRes, jikanRes] = await Promise.all([
-          fetch(`/anime/stream/anime/${animeSlug}`).then(r => r.json()),
-          fetch('/anime/stream/popular').then(r => r.json()).catch(() => ({ data: [] })),
+        // Pakai adapter API baru — output sudah di-normalisasi ke shape lama
+        const [animeData, popularData, epDataRaw, jikanRes] = await Promise.all([
+          fetchAnime(animeSlug).catch(() => null),
+          fetchPopular(1).catch(() => []),
           isEpisodeSlug
-            ? fetch(`/anime/stream/episode/${slug}`).then(r => r.json()).catch(() => null)
+            ? fetchEpisode(slug).catch(() => null)
             : Promise.resolve(null),
           fetch(`https://api.jikan.moe/v4/anime?q=${jikanQuery}&limit=5`)
             .then(r => r.json()).catch(() => ({ data: [] })),
         ]);
 
-        const data = animeRes.data || animeRes;
+        const data = animeData; // adapter sudah return object langsung, bukan { data }
         if (data) {
           // ✅ Ambil data Jikan untuk field yang kosong
           const jikan = extractJikanData(jikanRes, data.title);
@@ -162,18 +185,19 @@ const Watch = () => {
             studio: data.studio || jikan.studio || null,
             year: data.year || jikan.year || null,
             day: data.day || jikan.day || null,
-            status: data.status || jikan.status || null, 
-            type: data.type || jikan.type || null,             // ← tambah
+            status: data.status || jikan.status || null,
+            type: data.type || jikan.type || null,
             aired_start: data.aired_start || jikan.aired_start || null,
           };
 
           setAnime(mergedData);
 
+          // data.episodes / data.episode_list sudah di-normalisasi oleh adapter
           const epList = data.episodes || data.episode_list || [];
           const normalizedEps = epList.map((ep, i) => {
             const s = ep.eps_slug || ep.slug || ep.id || '';
             const num = ep.eps_title?.match(/(\d+)$/)?.[1] || s.match(/-episode-(\d+)$/)?.[1] || String(i + 1);
-            return { id: s, slug: s, index: parseInt(num), title: ep.eps_title || '' };
+            return { id: s, slug: s, index: parseInt(num) || (i + 1), title: ep.eps_title || '' };
           });
           setEpisodes(normalizedEps);
 
@@ -184,9 +208,9 @@ const Watch = () => {
           );
 
           // Episode slug langsung → apply
-          if (isEpisodeSlug && epRes) {
-            const epData = epRes.data || epRes;
-            if (epData) applyEpData(epData, slug);
+          if (isEpisodeSlug && epDataRaw) {
+            const resolved = await resolveStreamLinks(epDataRaw);
+            applyEpData(resolved, slug);
           }
 
           // Anime slug murni → fetch eps pertama dari list, update URL
@@ -196,17 +220,22 @@ const Watch = () => {
             navigate(`/anime/${firstEpSlug}`, { replace: true });
             setIsEpLoading(true);
             try {
-              const firstEpRes = await fetch(`/anime/stream/episode/${firstEpSlug}`).then(r => r.json());
-              const epData = firstEpRes.data || firstEpRes;
-              if (epData) applyEpData(epData, firstEpSlug);
-            } catch (e) {}
+              const firstEpData = await fetchEpisode(firstEpSlug);
+              const resolved = await resolveStreamLinks(firstEpData);
+              if (resolved) applyEpData(resolved, firstEpSlug);
+            } catch (e) {
+              console.error('First ep fetch failed', e);
+            }
             setIsEpLoading(false);
           }
         }
 
-        const recData = popularRes.data || popularRes || [];
-        setRecommendations((Array.isArray(recData) ? recData : []).slice(0, 5));
-      } catch (e) {}
+        // Rekomendasi (popular)
+        const recData = Array.isArray(popularData) ? popularData : [];
+        setRecommendations(recData.slice(0, 5));
+      } catch (e) {
+        console.error('Watch load failed', e);
+      }
       setIsLoading(false);
     };
 
@@ -229,10 +258,12 @@ const Watch = () => {
     setServers([]);
     setSelectedServer(null);
     try {
-      const res = await fetch(`/anime/stream/episode/${epSlug}`).then(r => r.json());
-      const epData = res.data || res;
-      if (epData) applyEpData(epData, epSlug);
-    } catch (e) {}
+      const epData = await fetchEpisode(epSlug);
+      const resolved = await resolveStreamLinks(epData);
+      if (resolved) applyEpData(resolved, epSlug);
+    } catch (e) {
+      console.error('Change episode failed', e);
+    }
     setIsEpLoading(false);
   };
 

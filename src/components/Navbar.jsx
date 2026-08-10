@@ -4,6 +4,7 @@ import { supabase } from '../utils/supabaseClient';
 import { isFavorite, saveFavorite, removeFavorite } from '../utils/favoritesManager';
 import { getHistory } from '../utils/historyManager';
 import { getProfile, updateProfile, syncProfileLevel, calculateLevel } from '../utils/profileManager';
+import { fetchSearch } from '../utils/api';
 
 const Navbar = () => {
   const navigate = useNavigate();
@@ -186,9 +187,11 @@ const Navbar = () => {
       if (searchQuery.length > 2) {
         setIsLiveLoading(true);
         try {
-          const res = await fetch(`/anime/stream/search/${encodeURIComponent(searchQuery)}`).then(r => r.json());
-          setLiveResults(Array.isArray(res.data) ? res.data : (Array.isArray(res) ? res : []));
-        } catch (e) { setLiveResults([]); }
+          const data = await fetchSearch(searchQuery);
+          setLiveResults(Array.isArray(data) ? data : []);
+        } catch (e) {
+          setLiveResults([]);
+        }
         setIsLiveLoading(false);
       } else { setLiveResults([]); }
     }, 400);

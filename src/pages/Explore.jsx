@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import Navbar from '../components/Navbar';
+import { fetchGenres, fetchGenre, fetchSearch, fetchPopular, fetchComplete } from '../utils/api';
 
 const Shimmer = () => <div className="absolute top-0 bottom-0 left-0 w-[150%] animate-[shimmer_1.5s_infinite] bg-gradient-to-r from-transparent via-white/5 to-transparent z-10" style={{ transform: 'translate3d(-100%, 0, 0) skewX(-20deg)' }} />;
 
@@ -96,25 +97,22 @@ const Explore = () => {
   useEffect(() => {
     window.scrollTo(0, 0);
     let isMounted = true;
-    
+
     // Cek cache dulu
     if (window.__NEFUSOFT_CACHE__?.genres) {
       setGenres(window.__NEFUSOFT_CACHE__.genres);
       return;
     }
-    
-    fetch('/anime/stream/genres')
-      .then(r => r.json())
-      .then(d => { 
-        if (isMounted) {
-          const fetchedGenres = d.data || [];
-          setGenres(fetchedGenres);
-          // Simpan ke cache
-          if (!window.__NEFUSOFT_CACHE__) window.__NEFUSOFT_CACHE__ = {};
-          window.__NEFUSOFT_CACHE__.genres = fetchedGenres;
-        }
+
+    // Pakai adapter langsung — return [{id, name, slug}, ...]
+    fetchGenres()
+      .then((fetchedGenres) => {
+        if (!isMounted) return;
+        setGenres(fetchedGenres || []);
+        if (!window.__NEFUSOFT_CACHE__) window.__NEFUSOFT_CACHE__ = {};
+        window.__NEFUSOFT_CACHE__.genres = fetchedGenres;
       })
-      .catch(() => {});
+      .catch((e) => console.error('Genres fetch failed', e));
     return () => { isMounted = false; };
   }, []);
 
@@ -136,17 +134,34 @@ const Explore = () => {
 
       setIsLoading(true);
       try {
-        let url = `/anime/stream/popular${page}`;
+        let fetchedData = [];
         if (query) {
-          url = `/anime/stream/search/${encodeURIComponent(query)}&page=${page}`;
+          // Search tidak support pagination di API baru — return array
+          fetchedData = await fetchSearch(query);
         } else if (selectedGenres.length > 0) {
-          const genreQuery = selectedGenres.map(id => `id=${id}`).join('&');
-          url = `/anime/stream/genres/${genreQuery}&page=${page}`;
+          // API baru: /anime/genre/:slug?page=X — support multiple genre dengan fetch paralel lalu merge
+          const lists = await Promise.all(
+            selectedGenres.map((slug) => fetchGenre(slug, page + 1))
+          );
+          // De-dupe by id
+          const seen = new Set();
+          fetchedData = [];
+          lists.forEach((arr) => {
+            (arr || []).forEach((a) => {
+              if (a && !seen.has(a.id)) {
+                seen.add(a.id);
+                fetchedData.push(a);
+              }
+            });
+          });
+        } else {
+          // "Popular" default — pakai complete-anime sebagai fallback
+          fetchedData = page === 0
+            ? await fetchPopular(1)
+            : await fetchComplete(page + 1);
         }
-        
-        const res = await fetch(url).then(r => r.json());
+
         if (isMounted) {
-          const fetchedData = res.data || [];
           setResults(fetchedData);
           // Cache popular results
           if (!query && selectedGenres.length === 0 && page === 0) {
@@ -155,6 +170,7 @@ const Explore = () => {
           }
         }
       } catch (e) {
+        console.error('Explore results fetch failed', e);
         if (isMounted) setResults([]);
       } finally {
         if (isMounted) setIsLoading(false);
